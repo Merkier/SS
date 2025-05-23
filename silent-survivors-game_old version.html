@@ -1,0 +1,3876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Silent Survivors</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #111;
+            touch-action: none;
+            user-select: none;
+            font-family: Consolas, sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            position: fixed;
+            top: 0;
+            left: 0;
+            background-color: #222;
+        }
+        #joystick-area {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 120px;
+            height: 120px;
+            border-radius: 60px;
+            background-color: rgba(255, 255, 255, 0.1);
+            touch-action: none;
+        }
+        #joystick {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50px;
+            height: 50px;
+            border-radius: 25px;
+            background-color: rgba(255, 255, 255, 0.3);
+            transform: translate(-50%, -50%);
+            touch-action: none;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 14px;
+        }
+        #level-progress {
+            position: absolute;
+            top: 10px;
+            left: 0;
+            right: 0;
+            margin: 0 auto;
+            width: 200px;
+            height: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 1px solid #444;
+        }
+        #progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: #8844ff;
+        }
+        #character-select {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 500px;
+            background-color: rgba(0, 0, 0, 0.8);
+            border: 2px solid #444;
+            border-radius: 10px;
+            padding: 20px;
+            color: white;
+            text-align: center;
+        }
+        .character-option {
+            display: inline-block;
+            margin: 10px;
+            padding: 15px;
+            width: 120px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 2px solid #666;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .character-option:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+            border-color: #aaa;
+        }
+        .character-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 10px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+        }
+        #upgrade-menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 500px;
+            background-color: rgba(0, 0, 0, 0.9);
+            border: 2px solid #6644aa;
+            border-radius: 10px;
+            padding: 20px;
+            color: white;
+            display: none;
+        }
+        .upgrade-option {
+            margin: 10px 0;
+            padding: 15px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 1px solid #6644aa;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .upgrade-option:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+            border-color: #aa88ff;
+        }
+        .upgrade-name {
+            font-weight: bold;
+            color: #aa88ff;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="joystick-area">
+        <div id="joystick"></div>
+    </div>
+    <div id="ui">
+        <div>Level: <span id="level">1</span></div>
+        <div>Notes: <span id="notes">0</span></div>
+        <div>Character: <span id="character-type">None</span></div>
+    </div>
+    <div id="level-progress">
+        <div id="progress-bar"></div>
+    </div>
+    
+    <div id="character-select">
+        <h2>Choose Your Character</h2>
+        <div class="character-option" onclick="selectCharacter('ARCHER')">
+            <div class="character-icon" style="background-color: #22aaff;">🏹</div>
+            <div>Archer</div>
+            <div style="font-size: 12px; margin-top: 5px;">Ranged attacks</div>
+        </div>
+        <div class="character-option" onclick="selectCharacter('FOOTMAN')">
+            <div class="character-icon" style="background-color: #44cc66;">⚔️</div>
+            <div>Footman</div>
+            <div style="font-size: 12px; margin-top: 5px;">Melee attacks</div>
+        </div>
+    </div>
+    
+    <div id="upgrade-menu">
+        <h2>Choose an Upgrade</h2>
+        <div id="upgrade-options"></div>
+    </div>
+
+    <script>
+        // Game Constants
+        let GAME_WIDTH = window.innerWidth;
+        let GAME_HEIGHT = window.innerHeight;
+        const PLAYER_SIZE = 40;
+        const PLAYER_SPEED = 5;
+        const ENEMY_SIZE = 25;
+        const ENEMY_SPEED = 2;
+        const PROJECTILE_SIZE = 10;
+        const PROJECTILE_SPEED = 8;
+        const NOTE_SIZE = 15;
+        const MAX_ENEMIES = 50;
+        const SPAWN_RATE = 1000; // ms
+        const AUTO_ATTACK_RATE = 500; // ms
+        const MELEE_ATTACK_RATE = 300; // ms
+        const MELEE_RANGE = 80; // px
+        const NOTES_TO_LEVEL_UP = 10;
+
+        // Character Types
+        const CHARACTER_TYPES = {
+            ARCHER: {
+                name: "Archer",
+                color: "#22aaff",
+                attackType: "ranged",
+                attackRate: AUTO_ATTACK_RATE,
+                projectileSpeed: PROJECTILE_SPEED,
+                range: 500
+            },
+            FOOTMAN: {
+                name: "Footman",
+                color: "#44cc66",
+                attackType: "melee",
+                attackRate: MELEE_ATTACK_RATE,
+                attackRange: MELEE_RANGE,
+                attackDamage: 1
+            }
+        };
+
+        // Game State
+        let canvas, ctx;
+        let lastTime = 0;
+        let deltaTime = 0;
+        let spawnTimer = 0;
+        let attackTimer = 0;
+        let noteFragments = 0;
+        let level = 1;
+        let characterSelected = false;
+        let currentUpgrades = [];
+        let meleeAttackActive = false;
+        let meleeAttackTimer = 0;
+
+        // Game Objects
+        let player = {
+            x: GAME_WIDTH / 2,
+            y: GAME_HEIGHT / 2,
+            size: PLAYER_SIZE,
+            speed: PLAYER_SPEED,
+            characterType: null,
+            attackPower: 1,
+            attackRate: AUTO_ATTACK_RATE,
+            range: 500,
+            attackRange: MELEE_RANGE,
+            color: "#4488ff",
+            vx: 0,
+            vy: 0,
+            critChance: 0,
+            doubleAttackChance: 0,
+            burstAttack: 1,
+            piercing: false,
+            multiTarget: false
+        };
+
+        let enemies = [];
+        let projectiles = [];
+        let notes = [];
+        let meleeAttacks = [];
+        
+        // Joystick Variables
+        let joystick = {
+            active: false,
+            baseX: 0,
+            baseY: 0,
+            stickX: 0,
+            stickY: 0,
+            deltaX: 0,
+            deltaY: 0
+        };
+
+                // Music Theory Upgrades
+                const MUSIC_UPGRADES = {
+            INTERVAL: [
+                {
+                    name: "Perfect Fifth Harmony",
+                    description: "Boosts attack power by 20%",
+                    apply: (player) => {
+                        player.attackPower *= 1.2;
+                    }
+                },
+                {
+                    name: "Octave Extension",
+                    description: "Increases attack range by 25%",
+                    apply: (player) => {
+                        if (player.characterType === "ARCHER") {
+                            player.range *= 1.25;
+                        } else {
+                            player.attackRange *= 1.25;
+                        }
+                    }
+                },
+                {
+                    name: "Minor Third Precision",
+                    description: "15% chance for critical hits",
+                    apply: (player) => {
+                        player.critChance = (player.critChance || 0) + 0.15;
+                    }
+                }
+            ],
+            SCALE: [
+                {
+                    name: "Dorian Mode Cascade",
+                    description: "Projectiles pierce through enemies",
+                    apply: (player) => {
+                        player.piercing = true;
+                    }
+                },
+                {
+                    name: "Pentatonic Scale",
+                    description: "Attacks hit multiple targets",
+                    apply: (player) => {
+                        player.multiTarget = true;
+                    }
+                },
+                {
+                    name: "Chromatic Progression",
+                    description: "Increased attack speed by 15%",
+                    apply: (player) => {
+                        player.attackRate *= 0.85; // Lower is faster
+                    }
+                }
+            ],
+            RHYTHM: [
+                {
+                    name: "Syncopation Boost",
+                    description: "Increases movement speed by 20%",
+                    apply: (player) => {
+                        player.speed *= 1.2;
+                    }
+                },
+                {
+                    name: "Polyrhythm Pulse",
+                    description: "Chance to attack twice",
+                    apply: (player) => {
+                        player.doubleAttackChance = (player.doubleAttackChance || 0) + 0.2;
+                    }
+                },
+                {
+                    name: "Triplet Pattern",
+                    description: "Attacks in bursts of three",
+                    apply: (player) => {
+                        player.burstAttack = 3;
+                    }
+                }
+            ]
+        };
+
+        // Initialize Game
+        function init() {
+            canvas = document.getElementById("gameCanvas");
+            ctx = canvas.getContext("2d");
+            
+            // Wait for window to be fully loaded
+            setTimeout(() => {
+                // Set canvas size and update constants
+                canvas.width = window.innerWidth || document.documentElement.clientWidth || 800;
+                canvas.height = window.innerHeight || document.documentElement.clientHeight || 600;
+                GAME_WIDTH = canvas.width;
+                GAME_HEIGHT = canvas.height;
+                
+                // Position player in center
+                player.x = GAME_WIDTH / 2;
+                player.y = GAME_HEIGHT / 2;
+                
+                console.log("Game initialized. Canvas size:", GAME_WIDTH, GAME_HEIGHT);
+                
+                // Setup joystick for mobile
+                setupJoystick();
+                
+                // Show character selection
+                document.getElementById('character-select').style.display = 'block';
+                
+                // Start game loop with gameActive properly initialized
+                gameActive = false;
+                requestAnimationFrame(gameLoop);
+            }, 100);
+            
+            // Add window resize handler
+            window.addEventListener('resize', handleResize);
+        }
+        
+        // Character Selection
+        function selectCharacter(type) {
+            player.characterType = type;
+            characterSelected = true;
+            gameActive = true;
+            
+            // Set character-specific properties
+            const charType = CHARACTER_TYPES[type];
+            player.color = charType.color;
+            player.attackRate = charType.attackRate;
+            
+            if (type === "ARCHER") {
+                player.range = charType.range;
+                player.projectileSpeed = charType.projectileSpeed;
+            } else if (type === "FOOTMAN") {
+                player.attackRange = charType.attackRange;
+                player.attackDamage = charType.attackDamage;
+            }
+            
+            // Hide character select screen
+            document.getElementById('character-select').style.display = 'none';
+            
+            // Update UI
+            document.getElementById('character-type').textContent = charType.name;
+            
+            console.log("Character selected:", type);
+        }
+        
+        // Handle window resize
+        function handleResize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            GAME_WIDTH = canvas.width;
+            GAME_HEIGHT = canvas.height;
+            console.log("Canvas resized to:", GAME_WIDTH, GAME_HEIGHT);
+        }
+
+        // Joystick Setup
+        function setupJoystick() {
+            const joystickArea = document.getElementById("joystick-area");
+            const joystickElement = document.getElementById("joystick");
+            
+            // Joystick base position
+            const rect = joystickArea.getBoundingClientRect();
+            joystick.baseX = rect.left + rect.width / 2;
+            joystick.baseY = rect.top + rect.height / 2;
+            joystick.stickX = joystick.baseX;
+            joystick.stickY = joystick.baseY;
+            
+            // Touch event listeners
+            joystickArea.addEventListener('touchstart', handleJoystickStart);
+            joystickArea.addEventListener('touchmove', handleJoystickMove);
+            joystickArea.addEventListener('touchend', handleJoystickEnd);
+            
+            // Mouse event listeners (for testing on desktop)
+            joystickArea.addEventListener('mousedown', handleJoystickStart);
+            document.addEventListener('mousemove', handleJoystickMove);
+            document.addEventListener('mouseup', handleJoystickEnd);
+
+            // Keyboard controls (for testing)
+            document.addEventListener('keydown', handleKeyDown);
+            document.addEventListener('keyup', handleKeyUp);
+        }
+
+        // Joystick Event Handlers
+        function handleJoystickStart(e) {
+            e.preventDefault();
+            joystick.active = true;
+            updateJoystickPosition(e);
+        }
+
+        function handleJoystickMove(e) {
+            e.preventDefault();
+            if (joystick.active) {
+                updateJoystickPosition(e);
+            }
+        }
+
+        function handleJoystickEnd(e) {
+            e.preventDefault();
+            joystick.active = false;
+            joystick.deltaX = 0;
+            joystick.deltaY = 0;
+            
+            // Reset joystick position
+            const joystickElement = document.getElementById("joystick");
+            joystickElement.style.transform = `translate(-50%, -50%)`;
+        }
+
+        function updateJoystickPosition(e) {
+            let clientX, clientY;
+            
+            // Handle both touch and mouse events
+            if (e.type.startsWith('touch') && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            
+            // Calculate joystick delta
+            const joystickArea = document.getElementById("joystick-area");
+            const rect = joystickArea.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            // Calculate delta from center
+            let deltaX = clientX - centerX;
+            let deltaY = clientY - centerY;
+            
+            // Limit joystick movement to the area radius
+            const radius = rect.width / 2;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            
+            if (distance > radius) {
+                deltaX = deltaX * radius / distance;
+                deltaY = deltaY * radius / distance;
+            }
+            
+            // Update joystick element position
+            const joystickElement = document.getElementById("joystick");
+            joystickElement.style.transform = `translate(calc(${deltaX}px - 50%), calc(${deltaY}px - 50%))`;
+            
+            // Normalize for player movement (value between -1 and 1)
+            joystick.deltaX = deltaX / radius;
+            joystick.deltaY = deltaY / radius;
+        }
+
+        // Keyboard controls
+        function handleKeyDown(e) {
+            switch (e.key) {
+                case 'ArrowUp':
+                case 'w':
+                    joystick.deltaY = -1;
+                    break;
+                case 'ArrowDown':
+                case 's':
+                    joystick.deltaY = 1;
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                    joystick.deltaX = -1;
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                    joystick.deltaX = 1;
+                    break;
+            }
+        }
+
+        function handleKeyUp(e) {
+            switch (e.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'ArrowDown':
+                case 's':
+                    joystick.deltaY = 0;
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'ArrowRight':
+                case 'd':
+                    joystick.deltaX = 0;
+                    break;
+            }
+        }
+
+        // Game Loop
+        function gameLoop(timestamp) {
+            // Calculate delta time
+            if (lastTime === 0) lastTime = timestamp;
+            deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+            
+            // Only update game state if character selected
+            if (gameActive) {
+                update(deltaTime);
+            }
+            
+            render();
+            enhancedRender()
+            requestAnimationFrame(gameLoop);
+            enhancedUpdate(deltaTime);
+
+        }
+
+        // Update Game State
+        function update(deltaTime) {
+            // Update player position based on joystick
+            player.vx = joystick.deltaX * player.speed;
+            player.vy = joystick.deltaY * player.speed;
+            
+            player.x += player.vx;
+            player.y += player.vy;
+            
+            // Keep player on screen
+            player.x = Math.max(player.size / 2, Math.min(player.x, GAME_WIDTH - player.size / 2));
+            player.y = Math.max(player.size / 2, Math.min(player.y, GAME_HEIGHT - player.size / 2));
+            
+            // Spawn enemies
+            spawnTimer += deltaTime;
+            if (spawnTimer >= SPAWN_RATE && enemies.length < MAX_ENEMIES) {
+                spawnEnemy();
+                spawnTimer = 0;
+            }
+            
+            // Character-specific attacks
+            attackTimer += deltaTime;
+            if (attackTimer >= player.attackRate) {
+                if (player.characterType === "ARCHER") {
+                    fireProjectile();
+                } else if (player.characterType === "FOOTMAN") {
+                    meleeAttack();
+                }
+                attackTimer = 0;
+            }
+            
+            // Update melee attacks
+            if (player.characterType === "FOOTMAN") {
+                updateMeleeAttacks(deltaTime);
+            }
+            
+            // Update enemies
+            updateEnemies(deltaTime);
+            
+            // Update projectiles
+            updateProjectiles(deltaTime);
+            
+            // Update notes
+            updateNotes(deltaTime);
+            
+            // Check collisions
+            checkCollisions();
+            
+            // Update UI
+            updateUI();
+        }
+
+        // Spawn Enemy
+        function spawnEnemy() {
+            // Spawn enemy from edge of screen
+            let x, y;
+            const side = Math.floor(Math.random() * 4); // 0: top, 1: right, 2: bottom, 3: left
+            
+            switch(side) {
+                case 0: // top
+                    x = Math.random() * GAME_WIDTH;
+                    y = -ENEMY_SIZE;
+                    break;
+                case 1: // right
+                    x = GAME_WIDTH + ENEMY_SIZE;
+                    y = Math.random() * GAME_HEIGHT;
+                    break;
+                case 2: // bottom
+                    x = Math.random() * GAME_WIDTH;
+                    y = GAME_HEIGHT + ENEMY_SIZE;
+                    break;
+                case 3: // left
+                    x = -ENEMY_SIZE;
+                    y = Math.random() * GAME_HEIGHT;
+                    break;
+            }
+            
+            const newEnemy = {
+                x: x,
+                y: y,
+                size: ENEMY_SIZE,
+                speed: ENEMY_SPEED * (1 + level * 0.1), // Increase speed with level
+                color: "#ff4444"
+            };
+            
+            enemies.push(newEnemy);
+            console.log(`Enemy spawned at ${Math.round(x)}, ${Math.round(y)}`);
+        }
+
+        // Fire Projectile (Archer Attack)
+        function fireProjectile() {
+            // Find the closest enemy to aim at
+            let closestEnemy = null;
+            let closestDist = Infinity;
+            
+            for (let enemy of enemies) {
+                const dist = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+                if (dist < closestDist) {
+                    closestDist = dist;
+                    closestEnemy = enemy;
+                }
+            }
+            
+            // Direction to fire
+            let dirX = 0;
+            let dirY = -1; // Default direction up if no enemies
+            
+            if (closestEnemy) {
+                const dx = closestEnemy.x - player.x;
+                const dy = closestEnemy.y - player.y;
+                const dist = Math.hypot(dx, dy);
+                dirX = dx / dist;
+                dirY = dy / dist;
+            }
+            
+            // Check for burst attack upgrade
+            const burstCount = player.burstAttack || 1;
+            
+            for (let i = 0; i < burstCount; i++) {
+                // Add slight spread for burst shots
+                let spreadDirX = dirX;
+                let spreadDirY = dirY;
+                
+                if (burstCount > 1) {
+                    const spreadAngle = (i - Math.floor(burstCount/2)) * 0.1;
+                    const cos = Math.cos(spreadAngle);
+                    const sin = Math.sin(spreadAngle);
+                    spreadDirX = dirX * cos - dirY * sin;
+                    spreadDirY = dirX * sin + dirY * cos;
+                }
+                
+                // Check for double attack chance
+                let attackCount = 1;
+                if (Math.random() < player.doubleAttackChance) {
+                    attackCount = 2;
+                }
+                
+                for (let j = 0; j < attackCount; j++) {
+                    // Create projectile with slight delay for double attacks
+                    setTimeout(() => {
+                        const newProjectile = {
+                            x: player.x,
+                            y: player.y,
+                            size: PROJECTILE_SIZE,
+                            speed: player.projectileSpeed || PROJECTILE_SPEED,
+                            dirX: spreadDirX,
+                            dirY: spreadDirY,
+                            color: "#ffcc00",
+                            power: player.attackPower,
+                            isCritical: Math.random() < player.critChance,
+                            piercing: player.piercing,
+                            distance: 0,
+                            maxDistance: player.range || 500,
+                            hitEnemies: [] // Track enemies hit for piercing
+                        };
+                        
+                        // Critical hits are larger and more powerful
+                        if (newProjectile.isCritical) {
+                            newProjectile.size *= 1.5;
+                            newProjectile.power *= 2;
+                            newProjectile.color = "#ff4400";
+                        }
+                        
+                        projectiles.push(newProjectile);
+                    }, j * 150); // 150ms delay between double attacks
+                }
+            }
+        }
+        
+        // Melee Attack (Footman Attack)
+        function meleeAttack() {
+            const range = player.attackRange || MELEE_RANGE;
+            
+            // Create melee attack area
+            const attack = {
+                x: player.x,
+                y: player.y,
+                range: range,
+                duration: 200, // ms
+                timeLeft: 200,
+                power: player.attackPower,
+                hitEnemies: [], // Track enemies hit
+                multiTarget: player.multiTarget
+            };
+            
+            meleeAttacks.push(attack);
+            meleeAttackActive = true;
+            
+            // Check for double attack chance
+            if (Math.random() < player.doubleAttackChance) {
+                setTimeout(() => {
+                    const secondAttack = {...attack, timeLeft: 200};
+                    meleeAttacks.push(secondAttack);
+                }, 150);
+            }
+            
+            // Check for burst attack (multiple swings)
+            if (player.burstAttack > 1) {
+                for (let i = 1; i < player.burstAttack; i++) {
+                    setTimeout(() => {
+                        const burstAttack = {...attack, timeLeft: 200};
+                        meleeAttacks.push(burstAttack);
+                    }, i * 250);
+                }
+            }
+        }
+        
+        // Update Melee Attacks
+        function updateMeleeAttacks(deltaTime) {
+            for (let i = meleeAttacks.length - 1; i >= 0; i--) {
+                const attack = meleeAttacks[i];
+                
+                // Decrease time left
+                attack.timeLeft -= deltaTime;
+                
+                // Remove expired attacks
+                if (attack.timeLeft <= 0) {
+                    meleeAttacks.splice(i, 1);
+                    continue;
+                }
+                
+                // Check for hits on enemies
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const enemy = enemies[j];
+                    
+                    // Skip if already hit by this attack
+                    if (attack.hitEnemies.includes(enemy)) {
+                        continue;
+                    }
+                    
+                    // Check distance
+                    const dx = enemy.x - attack.x;
+                    const dy = enemy.y - attack.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < attack.range + enemy.size/2) {
+                        // Hit!
+                        attack.hitEnemies.push(enemy);
+                        
+                        // Calculate damage (critical hit chance)
+                        let damage = attack.power;
+                        let isCritical = Math.random() < player.critChance;
+                        
+                        if (isCritical) {
+                            damage *= 2;
+                        }
+                        
+                        // Enemy defeated
+                        enemies.splice(j, 1);
+                        enhancedEnemyDefeated(enemy);
+                        
+                        // Spawn note fragment
+                        //spawnNoteFragment(enemy.x, enemy.y);
+                        
+                        // Stop checking more enemies unless multiTarget
+                        if (!attack.multiTarget) {
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Update active state
+            meleeAttackActive = meleeAttacks.length > 0;
+        }
+
+        // Update Enemies
+        function updateEnemies(deltaTime) {
+            for (let i = 0; i < enemies.length; i++) {
+                const enemy = enemies[i];
+                
+                // Move towards player
+                const dx = player.x - enemy.x;
+                const dy = player.y - enemy.y;
+                const dist = Math.hypot(dx, dy);
+                
+                if (dist > 0) {
+                    enemy.x += (dx / dist) * enemy.speed;
+                    enemy.y += (dy / dist) * enemy.speed;
+                }
+            }
+        }
+
+        // Update Projectiles
+        function updateProjectiles(deltaTime) {
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const projectile = projectiles[i];
+                
+                // Move projectile
+                projectile.x += projectile.dirX * projectile.speed;
+                projectile.y += projectile.dirY * projectile.speed;
+                
+                // Update distance traveled
+                projectile.distance += projectile.speed;
+                
+                // Remove if off screen or max distance reached
+                if (
+                    projectile.x < -50 ||
+                    projectile.x > GAME_WIDTH + 50 ||
+                    projectile.y < -50 ||
+                    projectile.y > GAME_HEIGHT + 50 ||
+                    projectile.distance > projectile.maxDistance
+                ) {
+                    projectiles.splice(i, 1);
+                }
+            }
+        }
+
+        // Update Notes
+        function updateNotes(deltaTime) {
+            for (let i = notes.length - 1; i >= 0; i--) {
+                const note = notes[i];
+                
+                // Move notes towards player when close
+                const dx = player.x - note.x;
+                const dy = player.y - note.y;
+                const dist = Math.hypot(dx, dy);
+                
+                // Attraction range
+                if (dist < 150) {
+                    const attractionSpeed = 3 + (1 - dist / 150) * 5; // Speed increases as gets closer
+                    note.x += (dx / dist) * attractionSpeed;
+                    note.y += (dy / dist) * attractionSpeed;
+                }
+            }
+        }
+
+        // Check Collisions
+        function checkCollisions() {
+            // Projectile-Enemy collisions
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const projectile = projectiles[i];
+                let hitEnemy = false;
+                
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const enemy = enemies[j];
+                    
+                    // Skip if this enemy was already hit by a piercing projectile
+                    if (projectile.hitEnemies && projectile.hitEnemies.includes(enemy)) {
+                        continue;
+                    }
+                    
+                    // Simple circle collision
+                    const dx = projectile.x - enemy.x;
+                    const dy = projectile.y - enemy.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < projectile.size / 2 + enemy.size / 2) {
+                        // Hit!
+                        hitEnemy = true;
+                        
+                        // Track hit enemy for piercing projectiles
+                        if (projectile.piercing) {
+                            if (!projectile.hitEnemies) {
+                                projectile.hitEnemies = [];
+                            }
+                            projectile.hitEnemies.push(enemy);
+                        }
+                        
+                        // Remove enemy
+
+                        enemies.splice(j, 1);
+                        enhancedEnemyDefeated(enemy);
+                        
+                        // Spawn note fragment
+                        //spawnNoteFragment(enemy.x, enemy.y);
+                        
+                        // Break unless projectile can pierce
+                        if (!projectile.piercing) {
+                            break;
+                        }
+                    }
+                }
+                
+                // Remove non-piercing projectile if it hit an enemy
+                if (hitEnemy && !projectile.piercing) {
+                    projectiles.splice(i, 1);
+                }
+            }
+            
+            // Player-Enemy collisions
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                
+                const dx = player.x - enemy.x;
+                const dy = player.y - enemy.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < player.size / 2 + enemy.size / 2) {
+                    // Hit! Game would handle damage here
+                    
+                    // For now, just push the player back
+                    const pushForce = 10;
+                    player.x += (dx / dist) * pushForce;
+                    player.y += (dy / dist) * pushForce;
+                    
+                    // Keep player on screen
+                    player.x = Math.max(player.size / 2, Math.min(player.x, GAME_WIDTH - player.size / 2));
+                    player.y = Math.max(player.size / 2, Math.min(player.y, GAME_HEIGHT - player.size / 2));
+                }
+            }
+            
+            // Player-Note collisions
+            for (let i = notes.length - 1; i >= 0; i--) {
+                const note = notes[i];
+                
+                const dx = player.x - note.x;
+                const dy = player.y - note.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < player.size / 2 + note.size / 2) {
+                    // Collect note
+                    notes.splice(i, 1);
+                    noteFragments++;
+                    
+                    // Check for level up
+                    if (noteFragments >= NOTES_TO_LEVEL_UP) {
+                        levelUp();
+                    }
+                }
+            }
+        }
+
+        // Spawn Note Fragment
+        function spawnNoteFragment(x, y) {
+            // Random note color
+            const colors = ["#ff8800", "#44ff44", "#ff44ff", "#44ffff"];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            
+            notes.push({
+                x: x,
+                y: y,
+                size: NOTE_SIZE,
+                color: color
+            });
+        }
+
+        // Level Up
+        function levelUp() {
+            level++;
+            noteFragments = 0; // Reset for next level
+            
+            console.log("Level up! Now level " + level);
+            
+            // Pause game and show upgrade menu
+            gameActive = false;
+            showUpgradeMenu();
+        }
+        
+        // Show Upgrade Menu
+        function showUpgradeMenu() {
+            const upgradeMenu = document.getElementById('upgrade-menu');
+            const upgradeOptions = document.getElementById('upgrade-options');
+            
+            // Clear previous options
+            upgradeOptions.innerHTML = '';
+            
+            // Choose three random upgrade categories
+            const categories = Object.keys(MUSIC_UPGRADES);
+            const selectedCategory = categories[Math.floor(Math.random() * categories.length)];
+            
+            // Get upgrades from the selected category
+            const upgrades = MUSIC_UPGRADES[selectedCategory];
+            
+            // Create upgrade options
+            upgrades.forEach((upgrade, index) => {
+                const option = document.createElement('div');
+                option.className = 'upgrade-option';
+                option.innerHTML = `
+                    <div class="upgrade-name">${upgrade.name}</div>
+                    <div>${upgrade.description}</div>
+                `;
+                
+                // Add click event
+                option.addEventListener('click', () => {
+                    selectUpgrade(selectedCategory, index);
+                });
+                
+                upgradeOptions.appendChild(option);
+            });
+            
+            // Show menu
+            upgradeMenu.style.display = 'block';
+        }
+        
+        // Select Upgrade
+        function selectUpgrade(category, index) {
+            const upgrade = MUSIC_UPGRADES[category][index];
+            
+            // Apply upgrade to player
+            upgrade.apply(player);
+            
+            // Add to current upgrades
+            currentUpgrades.push({
+                category: category,
+                name: upgrade.name,
+                description: upgrade.description
+            });
+            
+            // Hide upgrade menu
+            document.getElementById('upgrade-menu').style.display = 'none';
+            
+            // Resume game
+            gameActive = true;
+            
+            console.log(`Selected upgrade: ${upgrade.name}`);
+        }
+
+        // Update UI
+        function updateUI() {
+            document.getElementById("level").textContent = level;
+            document.getElementById("notes").textContent = noteFragments;
+            
+            const progressPercent = (noteFragments / NOTES_TO_LEVEL_UP) * 100;
+            document.getElementById("progress-bar").style.width = progressPercent + "%";
+        }
+
+        // Render Game
+        function render() {
+            // Clear canvas
+            ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            
+            // Draw background patterns (music staff-like lines)
+            drawBackground();
+            
+            // Draw notes
+            for (let note of notes) {
+                ctx.fillStyle = note.color;
+                ctx.beginPath();
+                ctx.arc(note.x, note.y, note.size / 2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw musical note symbol
+                ctx.strokeStyle = "#000";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(note.x, note.y, note.size / 4, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(note.x + note.size / 4, note.y);
+                ctx.lineTo(note.x + note.size / 4, note.y - note.size / 2);
+                ctx.stroke();
+            }
+            
+            // Draw melee attack areas
+            for (let attack of meleeAttacks) {
+                // Calculate opacity based on time left
+                const opacity = attack.timeLeft / attack.duration;
+                
+                // Draw circle for attack area
+                ctx.fillStyle = `rgba(100, 220, 100, ${opacity * 0.3})`;
+                ctx.beginPath();
+                ctx.arc(attack.x, attack.y, attack.range, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw ring
+                ctx.strokeStyle = `rgba(120, 255, 120, ${opacity})`;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(attack.x, attack.y, attack.range, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            
+            // Draw projectiles
+            for (let projectile of projectiles) {
+                ctx.fillStyle = projectile.color || "#ffcc00";
+                ctx.beginPath();
+                ctx.arc(projectile.x, projectile.y, projectile.size / 2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw trail for critical projectiles
+                if (projectile.isCritical) {
+                    ctx.strokeStyle = "rgba(255, 120, 30, 0.6)";
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(
+                        projectile.x - projectile.dirX * projectile.size * 2,
+                        projectile.y - projectile.dirY * projectile.size * 2
+                    );
+                    ctx.lineTo(projectile.x, projectile.y);
+                    ctx.stroke();
+                }
+            }
+            
+            // Draw enemies
+            for (let enemy of enemies) {
+                // Bright enemy color for visibility
+                ctx.fillStyle = "#ff2222";
+                ctx.beginPath();
+                ctx.arc(enemy.x, enemy.y, enemy.size / 2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Add "silencer" symbol (X shape)
+                ctx.strokeStyle = "#fff";
+                ctx.lineWidth = 3;
+                const offset = enemy.size / 4;
+                ctx.beginPath();
+                ctx.moveTo(enemy.x - offset, enemy.y - offset);
+                ctx.lineTo(enemy.x + offset, enemy.y + offset);
+                ctx.moveTo(enemy.x + offset, enemy.y - offset);
+                ctx.lineTo(enemy.x - offset, enemy.y + offset);
+                ctx.stroke();
+            }
+            
+            // Draw player with color based on character type
+            ctx.fillStyle = player.color;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.size / 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw player outline for better visibility
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.size / 2 + 2, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Draw player's weapon icon based on character type
+            if (player.characterType === "ARCHER") {
+                drawArcherIcon(player.x, player.y, player.size);
+            } else if (player.characterType === "FOOTMAN") {
+                drawFootmanIcon(player.x, player.y, player.size);
+            }
+            
+            // Draw debug info
+            if (gameActive) {
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "14px Consolas";
+                ctx.fillText("Enemies: " + enemies.length, 10, GAME_HEIGHT - 40);
+                ctx.fillText("Upgrades: " + currentUpgrades.length, 10, GAME_HEIGHT - 20);
+            }
+        }
+
+        // Draw Background
+        function drawBackground() {
+            // Draw musical staff-like lines
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+            ctx.lineWidth = 1;
+            
+            const lineSpacing = 40;
+            const staffLines = 5;
+            
+            for (let y = 0; y < GAME_HEIGHT; y += lineSpacing * staffLines + 100) {
+                for (let i = 0; i < staffLines; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y + i * lineSpacing);
+                    ctx.lineTo(GAME_WIDTH, y + i * lineSpacing);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // Draw Archer Icon
+        function drawArcherIcon(x, y, size) {
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 2;
+            
+            // Draw bow
+            ctx.beginPath();
+            ctx.arc(x, y, size / 3, -Math.PI/4, Math.PI/4, false);
+            ctx.stroke();
+            
+            // Draw bowstring
+            ctx.beginPath();
+            ctx.moveTo(x + (size/3) * Math.cos(-Math.PI/4), y + (size/3) * Math.sin(-Math.PI/4));
+            ctx.lineTo(x + (size/3) * Math.cos(Math.PI/4), y + (size/3) * Math.sin(Math.PI/4));
+            ctx.stroke();
+            
+            // Draw arrow
+            ctx.beginPath();
+            ctx.moveTo(x - size/4, y);
+            ctx.lineTo(x + size/3, y);
+            ctx.stroke();
+            
+            // Arrow head
+            ctx.beginPath();
+            ctx.moveTo(x + size/3, y);
+            ctx.lineTo(x + size/4, y - size/10);
+            ctx.lineTo(x + size/4, y + size/10);
+            ctx.lineTo(x + size/3, y);
+            ctx.fillStyle = "#fff";
+            ctx.fill();
+        }
+        
+        // Draw Footman Icon
+        function drawFootmanIcon(x, y, size) {
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 2;
+            
+            // Draw sword
+            ctx.beginPath();
+            ctx.moveTo(x + size/6, y - size/3);
+            ctx.lineTo(x - size/6, y + size/3);
+            ctx.stroke();
+            
+            // Sword hilt
+            ctx.beginPath();
+            ctx.moveTo(x + size/6 - size/10, y - size/3 + size/10);
+            ctx.lineTo(x + size/6 + size/10, y - size/3 - size/10);
+            ctx.stroke();
+            
+            // Draw shield
+            ctx.beginPath();
+            ctx.ellipse(x, y, size/4, size/3, Math.PI/4, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Shield emblem
+            ctx.beginPath();
+            ctx.moveTo(x - size/8, y);
+            ctx.lineTo(x + size/8, y);
+            ctx.moveTo(x, y - size/8);
+            ctx.lineTo(x, y + size/8);
+            ctx.stroke();
+        }
+
+        // Expose character selection function to global scope
+        window.selectCharacter = selectCharacter;
+        // FAME POINTS SYSTEM
+let famePoints = 0;
+let totalFamePoints = 0;
+let unlockedContent = {
+    characters: ["ARCHER", "FOOTMAN"],
+    scales: ["major"],
+    instruments: ["basic"],
+    passives: []
+};
+
+// FAME POINTS UI
+function setupFamePointsUI() {
+    // Create fame points display
+    const fameUI = document.createElement('div');
+    fameUI.id = 'fame-points';
+    fameUI.style.position = 'absolute';
+    fameUI.style.top = '10px';
+    fameUI.style.right = '10px';
+    fameUI.style.color = 'white';
+    fameUI.style.fontSize = '14px';
+    fameUI.innerHTML = 'Fame: <span id="fame-value">0</span>';
+    document.body.appendChild(fameUI);
+}
+
+function updateFamePointsUI() {
+    document.getElementById('fame-value').textContent = famePoints;
+}
+
+// BATTLE ROYALE MECHANICS - SHRINKING ARENA
+let arenaRadius = Math.min(GAME_WIDTH, GAME_HEIGHT) / 2;
+let arenaCenter = { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 };
+let arenaActive = false;
+let arenaStartTime = 0;
+let arenaWarningTime = 0;
+let arenaWarningShown = false;
+let arenaShrinkStartTime = 0;
+let arenaShrinkDuration = 60000; // 60 seconds to fully shrink
+let arenaDamageTimer = 0;
+let arenaDamageRate = 500; // ms between damage ticks
+
+function activateArena(delayBeforeWarning = 60000, delayBeforeShrink = 90000) {
+    arenaActive = true;
+    arenaStartTime = Date.now();
+    arenaWarningTime = arenaStartTime + delayBeforeWarning;
+    arenaShrinkStartTime = arenaStartTime + delayBeforeShrink;
+    arenaRadius = Math.min(GAME_WIDTH, GAME_HEIGHT) / 1.5;
+    arenaWarningShown = false;
+}
+
+function updateArena(deltaTime) {
+    if (!arenaActive) return;
+
+    const currentTime = Date.now();
+
+    // Show warning before arena starts to shrink
+    if (!arenaWarningShown && currentTime > arenaWarningTime) {
+        showArenaWarning();
+        arenaWarningShown = true;
+    }
+
+    // Start shrinking after delay
+    if (currentTime > arenaShrinkStartTime) {
+        const elapsedShrinkTime = currentTime - arenaShrinkStartTime;
+        const shrinkProgress = Math.min(elapsedShrinkTime / arenaShrinkDuration, 1);
+        const minRadius = 150; // Minimum arena radius
+        arenaRadius = Math.max(
+            minRadius,
+            (Math.min(GAME_WIDTH, GAME_HEIGHT) / 1.5) * (1 - shrinkProgress)
+        );
+    }
+
+    // Check if player is outside arena
+    const distToCenter = Math.hypot(player.x - arenaCenter.x, player.y - arenaCenter.y);
+    if (distToCenter > arenaRadius) {
+        // Deal damage to player when outside arena
+        arenaDamageTimer += deltaTime;
+        if (arenaDamageTimer >= arenaDamageRate) {
+            playerTakeDamage(1);
+            arenaDamageTimer = 0;
+        }
+    }
+}
+
+function drawArena() {
+    if (!arenaActive) return;
+
+    // Draw arena boundary
+    ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(arenaCenter.x, arenaCenter.y, arenaRadius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Draw danger zone
+    ctx.fillStyle = 'rgba(255, 0, 0, 0.1)';
+    ctx.beginPath();
+    ctx.arc(arenaCenter.x, arenaCenter.y, arenaRadius, 0, Math.PI * 2);
+    ctx.rect(GAME_WIDTH, 0, -GAME_WIDTH, GAME_HEIGHT);
+    ctx.fill();
+}
+
+function showArenaWarning() {
+    const warning = document.createElement('div');
+    warning.id = 'arena-warning';
+    warning.style.position = 'absolute';
+    warning.style.top = '50%';
+    warning.style.left = '50%';
+    warning.style.transform = 'translate(-50%, -50%)';
+    warning.style.color = 'red';
+    warning.style.fontSize = '24px';
+    warning.style.fontWeight = 'bold';
+    warning.style.textAlign = 'center';
+    warning.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    warning.style.padding = '20px';
+    warning.style.borderRadius = '10px';
+    warning.style.zIndex = '1000';
+    warning.innerHTML = 'WARNING:<br>Arena Shrinking Soon!';
+    document.body.appendChild(warning);
+
+    // Remove after 3 seconds
+    setTimeout(() => {
+        document.body.removeChild(warning);
+    }, 3000);
+}
+
+// PLAYER HEALTH SYSTEM (needed for arena damage)
+let playerHealth = 3;
+let playerMaxHealth = 3;
+let invulnerableTimer = 0;
+let invulnerableDuration = 1000; // 1 second invulnerability after taking damage
+
+function setupHealthUI() {
+    const healthUI = document.createElement('div');
+    healthUI.id = 'health-ui';
+    healthUI.style.position = 'absolute';
+    healthUI.style.top = '40px';
+    healthUI.style.left = '10px';
+    healthUI.style.color = 'white';
+    document.body.appendChild(healthUI);
+    updateHealthUI();
+}
+
+function updateHealthUI() {
+    const healthUI = document.getElementById('health-ui');
+    let hearts = '';
+    for (let i = 0; i < playerMaxHealth; i++) {
+        if (i < playerHealth) {
+            hearts += '❤️ ';
+        } else {
+            hearts += '🖤 ';
+        }
+    }
+    healthUI.textContent = hearts;
+}
+
+function playerTakeDamage(amount) {
+    if (invulnerableTimer > 0) return;
+
+    playerHealth -= amount;
+    invulnerableTimer = invulnerableDuration;
+
+    // Flash player to indicate damage
+    player.flashTimer = 500;
+
+    updateHealthUI();
+
+    // Check for game over
+    if (playerHealth <= 0) {
+        gameOver();
+    }
+}
+
+function updateInvulnerability(deltaTime) {
+    if (invulnerableTimer > 0) {
+        invulnerableTimer -= deltaTime;
+    }
+
+    // Update visual damage flash
+    if (player.flashTimer > 0) {
+        player.flashTimer -= deltaTime;
+    }
+}
+
+// CHEST SYSTEM
+let chests = [];
+const CHEST_SIZE = 30;
+const CHEST_SPAWN_CHANCE = 0.03; // 3% chance per enemy killed
+
+function spawnChest(x, y) {
+    chests.push({
+        x: x,
+        y: y,
+        size: CHEST_SIZE,
+        collected: false,
+        openTimer: 0
+    });
+}
+
+function updateChests(deltaTime) {
+    for (let i = chests.length - 1; i >= 0; i--) {
+        const chest = chests[i];
+
+        // Handle chest opening animation
+        if (chest.collected) {
+            chest.openTimer += deltaTime;
+            if (chest.openTimer > 1000) {
+                chests.splice(i, 1);
+            }
+            continue;
+        }
+
+        // Check for player collision
+        const dx = player.x - chest.x;
+        const dy = player.y - chest.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < player.size / 2 + chest.size / 2) {
+            chest.collected = true;
+            giveChestReward();
+        }
+    }
+}
+
+function drawChests() {
+    for (let chest of chests) {
+        // Don't draw if already collected and animation finished
+        if (chest.collected && chest.openTimer > 1000) continue;
+
+        // Base chest color
+        ctx.fillStyle = "#ffc107";
+
+        // Chest body
+        ctx.fillRect(
+            chest.x - chest.size / 2,
+            chest.y - chest.size / 2,
+            chest.size,
+            chest.size * 0.7
+        );
+
+        // Chest lid (with animation if opened)
+        if (chest.collected) {
+            const openProgress = Math.min(chest.openTimer / 500, 1);
+            ctx.fillRect(
+                chest.x - chest.size / 2,
+                chest.y - chest.size / 2 - chest.size * 0.3 * openProgress,
+                chest.size,
+                chest.size * 0.3
+            );
+
+            // Draw glow for opened chest
+            ctx.fillStyle = `rgba(255, 255, 150, ${1 - openProgress})`;
+            ctx.beginPath();
+            ctx.arc(chest.x, chest.y, chest.size + openProgress * 20, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            ctx.fillRect(
+                chest.x - chest.size / 2,
+                chest.y - chest.size / 2 - chest.size * 0.3,
+                chest.size,
+                chest.size * 0.3
+            );
+        }
+
+        // Chest lock
+        ctx.fillStyle = "#b0942a";
+        ctx.fillRect(
+            chest.x - chest.size * 0.1,
+            chest.y - chest.size * 0.15,
+            chest.size * 0.2,
+            chest.size * 0.3
+        );
+    }
+}
+
+function giveChestReward() {
+    // 3 types of rewards:
+    // 1. Health restore
+    // 2. Multiple note fragments
+    // 3. Instant upgrade
+    
+    const rewardType = Math.floor(Math.random() * 3);
+    
+    switch (rewardType) {
+        case 0: // Health restore
+            playerHealth = Math.min(playerHealth + 1, playerMaxHealth);
+            updateHealthUI();
+            showRewardText("Health +1!", "#ff5e5e");
+            break;
+        case 1: // Note fragments
+            const fragmentCount = 3 + Math.floor(Math.random() * 3); // 3-5 fragments
+            for (let i = 0; i < fragmentCount; i++) {
+                // Spawn fragments in a circle around the chest
+                const angle = (Math.PI * 2 * i) / fragmentCount;
+                const x = player.x + Math.cos(angle) * 50;
+                const y = player.y + Math.sin(angle) * 50;
+                spawnNoteFragment(x, y);
+            }
+            showRewardText("Notes x" + fragmentCount + "!", "#44ff44");
+            break;
+        case 2: // Instant upgrade
+            showUpgradeMenu();
+            showRewardText("Instant Upgrade!", "#aa88ff");
+            break;
+    }
+}
+
+function showRewardText(text, color) {
+    const rewardText = document.createElement('div');
+    rewardText.style.position = 'absolute';
+    rewardText.style.top = '50%';
+    rewardText.style.left = '50%';
+    rewardText.style.transform = 'translate(-50%, -50%)';
+    rewardText.style.color = color;
+    rewardText.style.fontSize = '24px';
+    rewardText.style.fontWeight = 'bold';
+    rewardText.style.textShadow = '2px 2px 4px rgba(0, 0, 0, 0.7)';
+    rewardText.style.zIndex = '1000';
+    rewardText.textContent = text;
+    document.body.appendChild(rewardText);
+
+    // Animate and remove
+    let opacity = 1;
+    let size = 24;
+    let yOffset = 0;
+    
+    const animateText = () => {
+        opacity -= 0.02;
+        size += 0.5;
+        yOffset -= 1;
+        
+        rewardText.style.opacity = opacity;
+        rewardText.style.fontSize = `${size}px`;
+        rewardText.style.transform = `translate(-50%, calc(-50% + ${yOffset}px))`;
+        
+        if (opacity > 0) {
+            requestAnimationFrame(animateText);
+        } else {
+            document.body.removeChild(rewardText);
+        }
+    };
+    
+    requestAnimationFrame(animateText);
+}
+
+// WEAPON EVOLUTION SYSTEM
+function checkWeaponEvolution() {
+    // Count upgrades by category
+    const categoryCount = {};
+    for (let upgrade of currentUpgrades) {
+        categoryCount[upgrade.category] = (categoryCount[upgrade.category] || 0) + 1;
+    }
+    
+    // Check if any category has 3 upgrades (fully evolved)
+    for (let category in categoryCount) {
+        if (categoryCount[category] >= 3) {
+            evolveWeapon(category);
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+function evolveWeapon(category) {
+    if (player.weaponEvolved) return;
+    
+    player.weaponEvolved = true;
+    
+    // Different evolutions based on character and category
+    if (player.characterType === "ARCHER") {
+        switch (category) {
+            case "INTERVAL":
+                evolveToPrecisionBow();
+                break;
+            case "SCALE":
+                evolveToHarmonyBow();
+                break;
+            case "RHYTHM":
+                evolveToStaccatoBow();
+                break;
+        }
+    } else if (player.characterType === "FOOTMAN") {
+        switch (category) {
+            case "INTERVAL":
+                evolveToResonantBlade();
+                break;
+            case "SCALE":
+                evolveToHarmonicShield();
+                break;
+            case "RHYTHM":
+                evolveToTempoMace();
+                break;
+        }
+    }
+    
+    // Show evolution notification
+    showEvolutionEffect();
+}
+
+function evolveToPrecisionBow() {
+    player.evolvedWeaponName = "Precision Bow";
+    player.range *= 1.5;
+    player.critChance += 0.2;
+    player.attackPower *= 1.3;
+    player.projectileSpeed *= 1.5;
+    player.weaponColor = "#ff9900";
+}
+
+function evolveToHarmonyBow() {
+    player.evolvedWeaponName = "Harmony Bow";
+    player.multiTarget = true;
+    player.piercing = true;
+    player.attackPower *= 1.2;
+    player.weaponColor = "#44aaff";
+}
+
+function evolveToStaccatoBow() {
+    player.evolvedWeaponName = "Staccato Bow";
+    player.attackRate *= 0.6; // Much faster
+    player.burstAttack = 3;
+    player.doubleAttackChance += 0.3;
+    player.weaponColor = "#ff44ff";
+}
+
+function evolveToResonantBlade() {
+    player.evolvedWeaponName = "Resonant Blade";
+    player.attackRange *= 1.5;
+    player.attackPower *= 1.5;
+    player.weaponColor = "#ffaa00";
+}
+
+function evolveToHarmonicShield() {
+    player.evolvedWeaponName = "Harmonic Shield";
+    player.multiTarget = true;
+    player.attackPower *= 1.2;
+    player.maxHealth += 2;
+    playerHealth += 2;
+    updateHealthUI();
+    player.weaponColor = "#00ccff";
+}
+
+function evolveToTempoMace() {
+    player.evolvedWeaponName = "Tempo Mace";
+    player.attackRate *= 0.7;
+    player.speed *= 1.3;
+    player.doubleAttackChance += 0.4;
+    player.weaponColor = "#ff00ff";
+}
+
+function showEvolutionEffect() {
+    // Create visual effect
+    const evolveEffect = document.createElement('div');
+    evolveEffect.id = 'evolve-effect';
+    evolveEffect.style.position = 'absolute';
+    evolveEffect.style.top = '40%';
+    evolveEffect.style.left = '50%';
+    evolveEffect.style.transform = 'translate(-50%, -50%)';
+    evolveEffect.style.color = '#ffffff';
+    evolveEffect.style.fontSize = '36px';
+    evolveEffect.style.fontWeight = 'bold';
+    evolveEffect.style.textAlign = 'center';
+    evolveEffect.style.textShadow = '0 0 10px #ffff00, 0 0 20px #ffff00, 0 0 30px #ffff00';
+    evolveEffect.style.zIndex = '1000';
+    evolveEffect.innerHTML = 'WEAPON EVOLVED!<br>' + player.evolvedWeaponName;
+    document.body.appendChild(evolveEffect);
+
+    // Remove after 3 seconds
+    setTimeout(() => {
+        document.body.removeChild(evolveEffect);
+    }, 3000);
+}
+
+// GAME OVER AND RUN SUMMARY
+function gameOver() {
+    gameActive = false;
+    
+    // Calculate fame points earned this run
+    const fameEarned = Math.floor(level * 10 + noteFragments * 2 + currentUpgrades.length * 5);
+    famePoints += fameEarned;
+    totalFamePoints += fameEarned;
+    updateFamePointsUI();
+    
+    // Create game over screen
+    const gameOverScreen = document.createElement('div');
+    gameOverScreen.id = 'game-over';
+    gameOverScreen.style.position = 'absolute';
+    gameOverScreen.style.top = '50%';
+    gameOverScreen.style.left = '50%';
+    gameOverScreen.style.transform = 'translate(-50%, -50%)';
+    gameOverScreen.style.width = '80%';
+    gameOverScreen.style.maxWidth = '500px';
+    gameOverScreen.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
+    gameOverScreen.style.border = '2px solid #ff4444';
+    gameOverScreen.style.borderRadius = '10px';
+    gameOverScreen.style.padding = '20px';
+    gameOverScreen.style.color = 'white';
+    gameOverScreen.style.textAlign = 'center';
+    gameOverScreen.style.zIndex = '1000';
+    
+    // Add content
+    gameOverScreen.innerHTML = `
+        <h1 style="color: #ff4444; margin-bottom: 20px;">Game Over</h1>
+        <div style="margin-bottom: 15px;">Level Reached: ${level}</div>
+        <div style="margin-bottom: 15px;">Notes Collected: ${noteFragments}</div>
+        <div style="margin-bottom: 15px;">Upgrades Acquired: ${currentUpgrades.length}</div>
+        <div style="margin-bottom: 20px; font-size: 20px; color: #ffcc00;">Fame Points Earned: ${fameEarned}</div>
+        <div style="margin-bottom: 20px;">Total Fame: ${famePoints}</div>
+        <button id="restart-button" style="background-color: #ff4444; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px;">Play Again</button>
+    `;
+    
+    document.body.appendChild(gameOverScreen);
+    
+    // Add button event listener
+    document.getElementById('restart-button').addEventListener('click', () => {
+        document.body.removeChild(gameOverScreen);
+        resetGame();
+    });
+}
+
+function resetGame() {
+    // Reset game state
+    player.x = GAME_WIDTH / 2;
+    player.y = GAME_HEIGHT / 2;
+    playerHealth = playerMaxHealth;
+    enemies = [];
+    projectiles = [];
+    notes = [];
+    meleeAttacks = [];
+    chests = [];
+    level = 1;
+    noteFragments = 0;
+    currentUpgrades = [];
+    attackTimer = 0;
+    spawnTimer = 0;
+    arenaActive = false;
+    player.weaponEvolved = false;
+    player.evolvedWeaponName = null;
+    
+    // Reset player stats to defaults
+    player.attackPower = 1;
+    player.speed = PLAYER_SPEED;
+    player.critChance = 0;
+    player.doubleAttackChance = 0;
+    player.burstAttack = 1;
+    player.piercing = false;
+    player.multiTarget = false;
+    
+    if (player.characterType === "ARCHER") {
+        player.range = CHARACTER_TYPES.ARCHER.range;
+        player.attackRate = CHARACTER_TYPES.ARCHER.attackRate;
+        player.projectileSpeed = CHARACTER_TYPES.ARCHER.projectileSpeed;
+    } else if (player.characterType === "FOOTMAN") {
+        player.attackRange = CHARACTER_TYPES.FOOTMAN.attackRange;
+        player.attackRate = CHARACTER_TYPES.FOOTMAN.attackRate;
+    }
+    
+    // Reset UI
+    updateUI();
+    updateHealthUI();
+    
+    // Show character select again
+    document.getElementById('character-select').style.display = 'block';
+    characterSelected = false;
+}
+
+// MAIN GAME INITIALIZATION ENHANCEMENT
+function enhancedInit() {
+    // Call original init first
+    init();
+    
+    // Setup additional UI
+    setupFamePointsUI();
+    setupHealthUI();
+    
+    // Activate arena after 2 minutes (120000ms) with 30s warning
+    setTimeout(() => {
+        if (gameActive) {
+            activateArena(0, 3000); // For testing: 0ms warning, 3s before shrink
+        }
+    }, 120000);
+}
+
+// ENHANCED UPDATE FUNCTION
+function enhancedUpdate(deltaTime) {
+    // Update invulnerability timer
+    updateInvulnerability(deltaTime);
+    
+    // Update arena
+    updateArena(deltaTime);
+    
+    // Update chests
+    updateChests(deltaTime);
+    
+    // Check for weapon evolution after each upgrade selection
+    if (currentUpgrades.length > 0 && currentUpgrades.length % 3 === 0 && !player.weaponEvolved) {
+        checkWeaponEvolution();
+    }
+}
+
+// ENHANCED RENDER FUNCTION
+function enhancedRender() {
+    // Draw chests
+    drawChests();
+    
+    // Draw arena boundary
+    drawArena();
+    enhancedRender();
+    // Player damage visual effect
+    if (player.flashTimer > 0) {
+        const flashOpacity = (player.flashTimer % 200 < 100) ? 0.7 : 0;
+        ctx.fillStyle = `rgba(255, 0, 0, ${flashOpacity})`;
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, player.size / 2 + 5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    // If weapon evolved, add glow effect
+    if (player.weaponEvolved) {
+        ctx.strokeStyle = player.weaponColor || "#ffff00";
+        ctx.lineWidth = 3;
+        
+        // Pulsing glow
+        const pulseSize = 5 + Math.sin(Date.now() / 200) * 3;
+        
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, player.size / 2 + pulseSize, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Draw evolved weapon name
+        if (player.evolvedWeaponName) {
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "12px Consolas";
+            ctx.textAlign = "center";
+            ctx.fillText(player.evolvedWeaponName, player.x, player.y - player.size / 2 - 15);
+        }
+    }
+}
+
+// ENHANCED ENEMY DEFEATED FUNCTION
+function enhancedEnemyDefeated(enemy) {
+    // Spawn note fragment
+    spawnNoteFragment(enemy.x, enemy.y);
+    
+    // Chance to spawn chest
+    if (Math.random() < CHEST_SPAWN_CHANCE) {
+        spawnChest(enemy.x, enemy.y);
+    }
+}
+
+// =============================================
+// 1. BOSS ENCOUNTERS ("REQUIEM" BOSSES)
+// =============================================
+
+// Boss data with music-themed attacks and behaviors
+const BOSS_TYPES = {
+    PERCUSSIONIST: {
+        name: "Rhythm Devourer",
+        size: 100,
+        health: 100,
+        color: "#ff2200",
+        speed: 1.2,
+        attackInterval: 2000,
+        attackType: "shockwave",
+        requiemAbility: "Percussion Canon",
+        requiemInterval: 10000,
+        description: "Unleashes rhythmic shockwaves that disrupt your tempo.",
+        dropAmount: 20,
+        icon: "🥁"
+    },
+    CONDUCTOR: {
+        name: "Dissonance Director",
+        size: 85,
+        health: 120,
+        color: "#8800ff",
+        speed: 1.5,
+        attackInterval: 3000,
+        attackType: "summon",
+        requiemAbility: "Cacophonic Swarm",
+        requiemInterval: 15000,
+        description: "Summons minions to create dissonance in your harmony.",
+        dropAmount: 25,
+        icon: "🎭"
+    },
+    ORCHESTRATOR: {
+        name: "Silence Symphony",
+        size: 120,
+        health: 150,
+        color: "#00aaff",
+        speed: 0.8,
+        attackInterval: 2500,
+        attackType: "field",
+        requiemAbility: "Grand Silence",
+        requiemInterval: 12000,
+        description: "Creates fields of silence that dampen your abilities.",
+        dropAmount: 30,
+        icon: "🎻"
+    }
+};
+
+// Initialize boss-related variables
+let activeBoss = null;
+let bossAttackTimer = 0;
+let bossRequiemTimer = 0;
+let nextBossLevel = 5; // First boss appears at level 5
+let bossDefeated = false;
+let bossHealthBar = {
+    width: 300,
+    height: 20,
+    x: GAME_WIDTH / 2 - 150,
+    y: 50
+};
+let bossAttacks = [];
+
+// Spawn a boss at designated intervals
+function spawnBoss() {
+    // Determine which boss to spawn based on level
+    let bossType;
+    let bossLevel = Math.floor(level / 5); // Every 5 levels cycle through bosses
+    
+    switch(bossLevel % 3) {
+        case 0: bossType = "PERCUSSIONIST"; break;
+        case 1: bossType = "CONDUCTOR"; break;
+        case 2: bossType = "ORCHESTRATOR"; break;
+    }
+    
+    // Create boss instance
+    const bossData = BOSS_TYPES[bossType];
+    
+    // Scale boss difficulty with level
+    const levelMultiplier = 1 + (level * 0.1);
+    
+    activeBoss = {
+        type: bossType,
+        name: bossData.name,
+        x: GAME_WIDTH / 2,
+        y: -bossData.size, // Start above screen
+        size: bossData.size,
+        health: bossData.health * levelMultiplier,
+        maxHealth: bossData.health * levelMultiplier,
+        color: bossData.color,
+        speed: bossData.speed,
+        attackInterval: bossData.attackInterval,
+        attackType: bossData.attackType,
+        requiemAbility: bossData.requiemAbility,
+        requiemInterval: bossData.requiemInterval,
+        requiemTimer: 0,
+        attackTimer: 0,
+        active: false, // Not fully entered screen yet
+        targetX: GAME_WIDTH / 2,
+        targetY: GAME_HEIGHT / 4,
+        phase: "entry", // entry, combat, requiem, defeated
+        invulnerable: true,
+        dropAmount: bossData.dropAmount,
+        icon: bossData.icon
+    };
+    
+    // Clear enemies for boss fight
+    enemies = [];
+    
+    // Pause regular spawning
+    bossFightActive = true;
+    
+    // Play boss warning sound
+    playSound("boss_warning");
+    
+    // Show boss warning
+    showBossWarning(bossData.name, bossData.description);
+}
+
+function updateBoss(deltaTime) {
+    if (!activeBoss) return;
+    
+    // Update boss position and behavior based on current phase
+    switch(activeBoss.phase) {
+        case "entry":
+            // Move boss onto screen
+            const dx = activeBoss.targetX - activeBoss.x;
+            const dy = activeBoss.targetY - activeBoss.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if (dist > 5) {
+                activeBoss.x += dx * 0.05;
+                activeBoss.y += dy * 0.05;
+            } else {
+                // Boss has reached position, begin combat
+                activeBoss.phase = "combat";
+                activeBoss.invulnerable = false;
+                
+                // Play boss theme music
+                playBossMusic();
+            }
+            break;
+            
+        case "combat":
+            // Regular boss movement
+            bossMovement(deltaTime);
+            
+            // Regular attack pattern
+            activeBoss.attackTimer += deltaTime;
+            if (activeBoss.attackTimer >= activeBoss.attackInterval) {
+                bossTriggerAttack();
+                activeBoss.attackTimer = 0;
+            }
+            
+            // Requiem ability charge
+            activeBoss.requiemTimer += deltaTime;
+            if (activeBoss.requiemTimer >= activeBoss.requiemInterval) {
+                // Enter requiem phase
+                activeBoss.phase = "requiem";
+                activeBoss.invulnerable = true;
+                activeBoss.requiemTimer = 0;
+                activeBoss.requiemChargeTime = 3000; // 3 seconds to prepare
+                
+                // Visual warning
+                showRequiemWarning();
+                
+                // Play requiem warning sound
+                playSound("requiem_charge");
+            }
+            break;
+            
+        case "requiem":
+            // Requiem charge-up animation
+            activeBoss.requiemChargeTime -= deltaTime;
+            
+            if (activeBoss.requiemChargeTime <= 0) {
+                // Execute requiem attack
+                triggerRequiemAttack();
+                
+                // Return to combat phase
+                activeBoss.phase = "combat";
+                activeBoss.invulnerable = false;
+            }
+            break;
+            
+        case "defeated":
+            // Boss defeat animation
+            activeBoss.defeatTimer -= deltaTime;
+            
+            if (activeBoss.defeatTimer <= 0) {
+                // Remove boss and drop rewards
+                dropBossRewards();
+                activeBoss = null;
+                bossFightActive = false;
+                bossDefeated = true;
+                
+                // Resume normal gameplay music
+                playGameplayMusic();
+            }
+            break;
+    }
+    
+    // Update boss attacks
+    updateBossAttacks(deltaTime);
+    
+    // Check for player collision with boss
+    checkBossCollision();
+}
+
+function bossMovement(deltaTime) {
+    // Different movement patterns based on boss type
+    switch(activeBoss.type) {
+        case "PERCUSSIONIST":
+            // Moves in rhythmic patterns side to side
+            activeBoss.targetX = GAME_WIDTH / 2 + Math.sin(Date.now() / 1000 * 1.5) * (GAME_WIDTH / 3);
+            break;
+            
+        case "CONDUCTOR":
+            // Approaches player periodically then retreats
+            if (Math.sin(Date.now() / 3000) > 0) {
+                // Approach player
+                activeBoss.targetX = player.x;
+                activeBoss.targetY = Math.min(GAME_HEIGHT / 3, player.y - 100);
+            } else {
+                // Retreat to top
+                activeBoss.targetX = GAME_WIDTH / 2;
+                activeBoss.targetY = GAME_HEIGHT / 5;
+            }
+            break;
+            
+        case "ORCHESTRATOR":
+            // Moves in circular patterns
+            const time = Date.now() / 2000;
+            activeBoss.targetX = GAME_WIDTH / 2 + Math.cos(time) * (GAME_WIDTH / 4);
+            activeBoss.targetY = GAME_HEIGHT / 3 + Math.sin(time) * (GAME_HEIGHT / 6);
+            break;
+    }
+    
+    // Move toward target position
+    const dx = activeBoss.targetX - activeBoss.x;
+    const dy = activeBoss.targetY - activeBoss.y;
+    
+    activeBoss.x += dx * 0.03 * activeBoss.speed;
+    activeBoss.y += dy * 0.03 * activeBoss.speed;
+}
+
+function bossTriggerAttack() {
+    switch(activeBoss.attackType) {
+        case "shockwave":
+            // Create expanding ring
+            bossAttacks.push({
+                type: "shockwave",
+                x: activeBoss.x,
+                y: activeBoss.y,
+                radius: 0,
+                maxRadius: 300,
+                speed: 3,
+                damage: 1,
+                color: activeBoss.color
+            });
+            playSound("boss_shockwave");
+            break;
+            
+        case "summon":
+            // Spawn minions
+            const minions = 3 + Math.floor(level / 10);
+            for (let i = 0; i < minions; i++) {
+                const angle = (Math.PI * 2 * i) / minions;
+                const spawnX = activeBoss.x + Math.cos(angle) * 80;
+                const spawnY = activeBoss.y + Math.sin(angle) * 80;
+                
+                // Create smaller "Silencer" minions
+                enemies.push({
+                    x: spawnX,
+                    y: spawnY,
+                    size: ENEMY_SIZE * 0.8,
+                    speed: ENEMY_SPEED * 1.5,
+                    color: activeBoss.color,
+                    isMinion: true
+                });
+            }
+            playSound("boss_summon");
+            break;
+            
+        case "field":
+            // Create damaging fields
+            const fields = 2 + Math.floor(level / 15);
+            
+            for (let i = 0; i < fields; i++) {
+                // Create fields near player
+                const fieldX = player.x + (Math.random() - 0.5) * 300;
+                const fieldY = player.y + (Math.random() - 0.5) * 300;
+                
+                bossAttacks.push({
+                    type: "field",
+                    x: fieldX,
+                    y: fieldY,
+                    radius: 80,
+                    duration: 5000,
+                    timeLeft: 5000,
+                    damage: 1,
+                    color: activeBoss.color,
+                    pulsate: true
+                });
+            }
+            playSound("boss_field");
+            break;
+    }
+}
+
+function triggerRequiemAttack() {
+    // Powerful "ultimate" attack based on boss type
+    switch(activeBoss.type) {
+        case "PERCUSSIONIST":
+            // Multiple shockwaves in quick succession
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => {
+                    bossAttacks.push({
+                        type: "shockwave",
+                        x: activeBoss.x,
+                        y: activeBoss.y,
+                        radius: 0,
+                        maxRadius: 500,
+                        speed: 4,
+                        damage: 1,
+                        color: "#ff0000",
+                        isRequiem: true
+                    });
+                }, i * 500);
+            }
+            break;
+            
+        case "CONDUCTOR":
+            // Massive minion swarm
+            const swarmSize = 10 + Math.floor(level / 5);
+            for (let i = 0; i < swarmSize; i++) {
+                setTimeout(() => {
+                    const angle = (Math.PI * 2 * i) / swarmSize;
+                    const spawnDistance = 200;
+                    const spawnX = activeBoss.x + Math.cos(angle) * spawnDistance;
+                    const spawnY = activeBoss.y + Math.sin(angle) * spawnDistance;
+                    
+                    enemies.push({
+                        x: spawnX,
+                        y: spawnY,
+                        size: ENEMY_SIZE,
+                        speed: ENEMY_SPEED * 2,
+                        color: "#aa00ff",
+                        isMinion: true
+                    });
+                }, i * 200);
+            }
+            break;
+            
+        case "ORCHESTRATOR":
+            // Screen-wide silence field that dampens player abilities
+            bossAttacks.push({
+                type: "silence",
+                x: GAME_WIDTH / 2,
+                y: GAME_HEIGHT / 2,
+                radius: Math.max(GAME_WIDTH, GAME_HEIGHT),
+                duration: 8000,
+                timeLeft: 8000,
+                effect: "dampen",
+                color: "#00ccff",
+                pulsate: true,
+                isRequiem: true
+            });
+            
+            // Apply temporary debuff to player
+            player.tempSpeedReduction = 0.6; // 40% slower
+            player.tempAttackRateReduction = 1.5; // 50% slower attacks
+            
+            // Remove debuff after silence field ends
+            setTimeout(() => {
+                player.tempSpeedReduction = 1;
+                player.tempAttackRateReduction = 1;
+            }, 8000);
+            break;
+    }
+    
+    // Visual effect
+    showRequiemActivated(activeBoss.requiemAbility);
+    
+    // Sound effect
+    playSound("requiem_activate");
+}
+
+function updateBossAttacks(deltaTime) {
+    for (let i = bossAttacks.length - 1; i >= 0; i--) {
+        const attack = bossAttacks[i];
+        
+        switch(attack.type) {
+            case "shockwave":
+                // Expand the shockwave
+                attack.radius += attack.speed;
+                
+                // Check for collision with player
+                const distToPlayer = Math.hypot(player.x - attack.x, player.y - attack.y);
+                const hitboxRange = 20; // Width of the shockwave ring
+                
+                if (Math.abs(distToPlayer - attack.radius) < hitboxRange + player.size / 2) {
+                    if (!attack.hasHitPlayer) {
+                        playerTakeDamage(attack.damage);
+                        attack.hasHitPlayer = true;
+                    }
+                }
+                
+                // Remove if too large
+                if (attack.radius >= attack.maxRadius) {
+                    bossAttacks.splice(i, 1);
+                }
+                break;
+                
+            case "field":
+            case "silence":
+                // Decrease timer
+                attack.timeLeft -= deltaTime;
+                
+                // Check if player is inside field
+                const distToField = Math.hypot(player.x - attack.x, player.y - attack.y);
+                
+                if (distToField < attack.radius + player.size / 2) {
+                    if (attack.type === "field") {
+                        // Damage over time (only every 1 second)
+                        attack.damageTimer = (attack.damageTimer || 0) + deltaTime;
+                        if (attack.damageTimer > 1000) {
+                            playerTakeDamage(attack.damage);
+                            attack.damageTimer = 0;
+                        }
+                    }
+                }
+                
+                // Remove if expired
+                if (attack.timeLeft <= 0) {
+                    bossAttacks.splice(i, 1);
+                }
+                break;
+        }
+    }
+}
+
+function checkBossCollision() {
+    if (!activeBoss || activeBoss.phase === "entry" || activeBoss.phase === "defeated") return;
+    
+    // Check collision between player and boss
+    const dx = player.x - activeBoss.x;
+    const dy = player.y - activeBoss.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    
+    if (dist < player.size / 2 + activeBoss.size / 2) {
+        // Push player away
+        const pushForce = 15;
+        player.x += (dx / dist) * pushForce;
+        player.y += (dy / dist) * pushForce;
+        
+        // Keep player on screen
+        player.x = Math.max(player.size / 2, Math.min(player.x, GAME_WIDTH - player.size / 2));
+        player.y = Math.max(player.size / 2, Math.min(player.y, GAME_HEIGHT - player.size / 2));
+        
+        // Damage player
+        playerTakeDamage(1);
+    }
+    
+    // Check projectile hits on boss
+    if (!activeBoss.invulnerable) {
+        for (let i = projectiles.length - 1; i >= 0; i--) {
+            const projectile = projectiles[i];
+            
+            const pDx = projectile.x - activeBoss.x;
+            const pDy = projectile.y - activeBoss.y;
+            const pDist = Math.sqrt(pDx * pDx + pDy * pDy);
+            
+            if (pDist < projectile.size / 2 + activeBoss.size / 2) {
+                // Hit!
+                activeBoss.health -= projectile.power;
+                
+                // Create hit effect
+                createHitEffect(projectile.x, projectile.y, projectile.isCritical);
+                
+                // Remove non-piercing projectile
+                if (!projectile.piercing) {
+                    projectiles.splice(i, 1);
+                }
+                
+                // Play hit sound
+                playSound(projectile.isCritical ? "boss_hit_crit" : "boss_hit");
+                
+                // Check if boss defeated
+                if (activeBoss.health <= 0) {
+                    defeatedBoss();
+                }
+            }
+        }
+    }
+    
+    // Check melee hits on boss
+    if (player.characterType === "FOOTMAN" && !activeBoss.invulnerable) {
+        for (let i = meleeAttacks.length - 1; i >= 0; i--) {
+            const attack = meleeAttacks[i];
+            
+            // Skip if boss already hit by this attack
+            if (attack.hitBoss) continue;
+            
+            // Check distance
+            const aDx = activeBoss.x - attack.x;
+            const aDy = activeBoss.y - attack.y;
+            const aDist = Math.sqrt(aDx * aDx + aDy * aDy);
+            
+            if (aDist < attack.range + activeBoss.size / 2) {
+                // Hit!
+                attack.hitBoss = true;
+                
+                // Calculate damage
+                let damage = attack.power;
+                let isCritical = Math.random() < player.critChance;
+                
+                if (isCritical) {
+                    damage *= 2;
+                }
+                
+                // Damage boss
+                activeBoss.health -= damage;
+                
+                // Create hit effect
+                createHitEffect(
+                    attack.x + (aDx / aDist) * attack.range, 
+                    attack.y + (aDy / aDist) * attack.range,
+                    isCritical
+                );
+                
+                // Play hit sound
+                playSound(isCritical ? "boss_hit_crit" : "boss_hit");
+                
+                // Check if boss defeated
+                if (activeBoss.health <= 0) {
+                    defeatedBoss();
+                }
+            }
+        }
+    }
+}
+
+function defeatedBoss() {
+    // Set boss to defeated state
+    activeBoss.phase = "defeated";
+    activeBoss.invulnerable = true;
+    activeBoss.defeatTimer = 3000; // 3 second death animation
+    
+    // Update next boss level
+    nextBossLevel = level + 5;
+    
+    // Award extra fame points
+    const bossLevel = Math.floor(level / 5);
+    const fameReward = 50 + (bossLevel * 10);
+    famePoints += fameReward;
+    totalFamePoints += fameReward;
+    
+    // Show defeat message
+    showBossDefeated(activeBoss.name, fameReward);
+    
+    // Play victory sound
+    playSound("boss_defeated");
+}
+
+function dropBossRewards() {
+    // Drop a substantial amount of note fragments
+    for (let i = 0; i < activeBoss.dropAmount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = Math.random() * 150;
+        const x = activeBoss.x + Math.cos(angle) * distance;
+        const y = activeBoss.y + Math.sin(angle) * distance;
+        
+        spawnNoteFragment(x, y);
+    }
+    
+    // Also drop a chest with guaranteed upgrade
+    spawnChest(activeBoss.x, activeBoss.y, true); // true = guaranteed upgrade
+    
+    // Show note explosion effect
+    createNoteExplosion(activeBoss.x, activeBoss.y, activeBoss.dropAmount);
+}
+
+function drawBoss() {
+    if (!activeBoss) return;
+    
+    // Draw boss based on type
+    ctx.fillStyle = activeBoss.color;
+    
+    // Pulsating effect during requiem charge
+    if (activeBoss.phase === "requiem") {
+        const pulseScale = 1 + 0.1 * Math.sin(Date.now() / 50);
+        ctx.beginPath();
+        ctx.arc(activeBoss.x, activeBoss.y, activeBoss.size / 2 * pulseScale, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Aura
+        ctx.fillStyle = `rgba(${parseInt(activeBoss.color.substr(1, 2), 16)}, ${parseInt(activeBoss.color.substr(3, 2), 16)}, ${parseInt(activeBoss.color.substr(5, 2), 16)}, 0.3)`;
+        ctx.beginPath();
+        ctx.arc(activeBoss.x, activeBoss.y, activeBoss.size * pulseScale, 0, Math.PI * 2);
+        ctx.fill();
+    } else if (activeBoss.phase === "defeated") {
+        // Fadeout effect
+        const fadeProgress = activeBoss.defeatTimer / 3000;
+        ctx.globalAlpha = fadeProgress;
+        ctx.beginPath();
+        ctx.arc(activeBoss.x, activeBoss.y, activeBoss.size / 2 + (1 - fadeProgress) * 50, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    } else {
+        // Normal boss
+        ctx.beginPath();
+        ctx.arc(activeBoss.x, activeBoss.y, activeBoss.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Invulnerability visual effect
+        if (activeBoss.invulnerable && activeBoss.phase !== "defeated") {
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 4;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.arc(activeBoss.x, activeBoss.y, activeBoss.size / 2 + 5, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+    }
+    
+    // Draw boss icon
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `${activeBoss.size / 2}px Consolas`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(activeBoss.icon, activeBoss.x, activeBoss.y);
+    
+    // Draw boss health bar
+    if (activeBoss.phase !== "defeated") {
+        drawBossHealthBar();
+    }
+    
+    // Draw boss attacks
+    drawBossAttacks();
+}
+
+function drawBossHealthBar() {
+    // Position bar at top of screen
+    bossHealthBar.x = GAME_WIDTH / 2 - bossHealthBar.width / 2;
+    
+    // Background
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+    ctx.fillRect(bossHealthBar.x, bossHealthBar.y, bossHealthBar.width, bossHealthBar.height);
+    
+    // Border
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(bossHealthBar.x, bossHealthBar.y, bossHealthBar.width, bossHealthBar.height);
+    
+    // Health
+    const healthPercentage = activeBoss.health / activeBoss.maxHealth;
+    ctx.fillStyle = activeBoss.color;
+    ctx.fillRect(
+        bossHealthBar.x, 
+        bossHealthBar.y, 
+        bossHealthBar.width * healthPercentage, 
+        bossHealthBar.height
+    );
+    
+    // Boss name
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "16px Consolas";
+    ctx.textAlign = "center";
+    ctx.fillText(
+        activeBoss.name, 
+        GAME_WIDTH / 2, 
+        bossHealthBar.y - 10
+    );
+    
+    // Requiem charge indicator
+    if (activeBoss.phase === "combat") {
+        const requiemPercentage = activeBoss.requiemTimer / activeBoss.requiemInterval;
+        ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+        ctx.fillRect(
+            bossHealthBar.x,
+            bossHealthBar.y + bossHealthBar.height + 5,
+            bossHealthBar.width * requiemPercentage,
+            5
+        );
+    }
+}
+
+function drawBossAttacks() {
+    for (let attack of bossAttacks) {
+        switch(attack.type) {
+            case "shockwave":
+                // Draw expanding ring
+                const ringWidth = 20;
+                
+                // Create gradient
+                const gradient = ctx.createRadialGradient(
+                    attack.x, attack.y, attack.radius - ringWidth / 2,
+                    attack.x, attack.y, attack.radius + ringWidth / 2
+                );
+                
+                gradient.addColorStop(0, "rgba(0, 0, 0, 0)");
+                gradient.addColorStop(0.5, attack.isRequiem ? "#ff0000" : attack.color);
+                gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(attack.x, attack.y, attack.radius + ringWidth / 2, 0, Math.PI * 2);
+                ctx.arc(attack.x, attack.y, attack.radius - ringWidth / 2, 0, Math.PI * 2, true);
+                ctx.fill();
+                break;
+                
+            case "field":
+                // Pulsating harmful field
+                const fieldOpacity = attack.pulsate ? 
+                    0.2 + 0.1 * Math.sin(Date.now() / 200) : 0.3;
+                
+                ctx.fillStyle = `rgba(${parseInt(attack.color.substr(1, 2), 16)}, ${parseInt(attack.color.substr(3, 2), 16)}, ${parseInt(attack.color.substr(5, 2), 16)}, ${fieldOpacity})`;
+                ctx.beginPath();
+                ctx.arc(attack.x, attack.y, attack.radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Danger indicator
+                ctx.strokeStyle = attack.color;
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.arc(attack.x, attack.y, attack.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                break;
+                
+            case "silence":
+                // Large dampening field
+                const silenceOpacity = attack.pulsate ? 
+                    0.1 + 0.05 * Math.sin(Date.now() / 300) : 0.15;
+                
+                ctx.fillStyle = `rgba(${parseInt(attack.color.substr(1, 2), 16)}, ${parseInt(attack.color.substr(3, 2), 16)}, ${parseInt(attack.color.substr(5, 2), 16)}, ${silenceOpacity})`;
+                ctx.beginPath();
+                ctx.arc(attack.x, attack.y, attack.radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Musical notation overlays
+                ctx.fillStyle = `rgba(255, 255, 255, ${0.1 + 0.05 * Math.sin(Date.now() / 200)})`;
+                
+                // Draw rest symbols across the field
+                const rests = 12;
+                for (let i = 0; i < rests; i++) {
+                    const angle = (Math.PI * 2 * i) / rests;
+                    const distance = attack.radius * 0.6 * Math.random();
+                    const x = attack.x + Math.cos(angle) * distance;
+                    const y = attack.y + Math.sin(angle) * distance;
+                    
+                    ctx.font = "30px Consolas";
+                    ctx.textAlign = "center";
+                    ctx.fillText("𝄽", x, y);
+                }
+                break;
+        }
+    }
+}
+
+function showBossWarning(bossName, bossDescription) {
+    const warning = document.createElement('div');
+    warning.id = 'boss-warning';
+    warning.style.position = 'absolute';
+    warning.style.top = '50%';
+    warning.style.left = '50%';
+    warning.style.transform = 'translate(-50%, -50%)';
+    warning.style.color = '#ff0000';
+    warning.style.fontSize = '30px';
+    warning.style.fontWeight = 'bold';
+    warning.style.textAlign = 'center';
+    warning.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+    warning.style.padding = '30px';
+    warning.style.borderRadius = '15px';
+    warning.style.border = '3px solid #ff0000';
+    warning.style.zIndex = '1000';
+    warning.innerHTML = `WARNING:<br>REQUIEM BOSS APPROACHING<br><span style="font-size: 36px;">${bossName}</span><br><span style="font-size: 18px; color: #ffffff;">${bossDescription}</span>`;
+    document.body.appendChild(warning);
+
+    // Remove after 4 seconds
+    setTimeout(() => {
+        document.body.removeChild(warning);
+    }, 4000);
+}
+
+function showRequiemWarning() {
+    const warning = document.createElement('div');
+    warning.id = 'requiem-warning';
+    warning.style.position = 'absolute';
+    warning.style.top = '50%';
+    warning.style.left = '50%';
+    warning.style.transform = 'translate(-50%, -50%)';
+    warning.style.color = '#ff0000';
+    warning.style.fontSize = '32px';
+    warning.style.fontWeight = 'bold';
+    warning.style.textAlign = 'center';
+    warning.style.textShadow = '0 0 10px #ff0000';
+    warning.style.zIndex = '1000';
+    warning.innerHTML = `REQUIEM ABILITY CHARGING!`;
+    document.body.appendChild(warning);
+
+    // Flash effect
+    let opacity = 1;
+    const flashInterval = setInterval(() => {
+        opacity = opacity === 1 ? 0.3 : 1;
+        warning.style.opacity = opacity;
+    }, 200);
+
+    // Remove after 3 seconds
+    setTimeout(() => {
+        clearInterval(flashInterval);
+        document.body.removeChild(warning);
+    }, 3000);
+}
+
+function showRequiemActivated(abilityName) {
+    const message = document.createElement('div');
+    message.id = 'requiem-activate';
+    message.style.position = 'absolute';
+    message.style.top = '40%';
+    message.style.left = '50%';
+    message.style.transform = 'translate(-50%, -50%)';
+    message.style.color = '#ff0000';
+    message.style.fontSize = '36px';
+    message.style.fontWeight = 'bold';
+    message.style.textAlign = 'center';
+    message.style.textShadow = '0 0 15px #ff0000, 0 0 30px #ff0000';
+    message.style.zIndex = '1000';
+    message.innerHTML = `REQUIEM ACTIVATED:<br>${abilityName}`;
+    document.body.appendChild(message);
+
+    // Add dramatic zoom effect
+    let scale = 1;
+    const zoomInterval = setInterval(() => {
+        scale += 0.05;
+        message.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        message.style.opacity = (2 - scale) / 1;
+    }, 50);
+
+    // Remove after 2.5 seconds
+    setTimeout(() => {
+        clearInterval(zoomInterval);
+        document.body.removeChild(message);
+    }, 2500);
+}
+
+function showBossDefeated(bossName, fameReward) {
+    const message = document.createElement('div');
+    message.id = 'boss-defeated';
+    message.style.position = 'absolute';
+    message.style.top = '40%';
+    message.style.left = '50%';
+    message.style.transform = 'translate(-50%, -50%)';
+    message.style.color = '#ffcc00';
+    message.style.fontSize = '32px';
+    message.style.fontWeight = 'bold';
+    message.style.textAlign = 'center';
+    message.style.textShadow = '0 0 10px #ffcc00';
+    message.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    message.style.padding = '20px';
+    message.style.borderRadius = '10px';
+    message.style.zIndex = '1000';
+    message.innerHTML = `REQUIEM BOSS DEFEATED!<br>${bossName}<br><span style="font-size: 24px; color: #ffffff;">+${fameReward} Fame Points</span>`;
+    document.body.appendChild(message);
+
+    // Remove after 3 seconds
+    setTimeout(() => {
+        document.body.removeChild(message);
+    }, 3000);
+}
+
+function createHitEffect(x, y, isCritical) {
+    const hitEffect = {
+        x: x,
+        y: y,
+        size: isCritical ? 40 : 30,
+        opacity: 1,
+        color: isCritical ? "#ff4400" : "#ffcc00"
+    };
+    
+    // Add hit effect animation
+    const animateHit = () => {
+        // Draw hit effect
+        ctx.fillStyle = `rgba(${parseInt(hitEffect.color.substr(1, 2), 16)}, ${parseInt(hitEffect.color.substr(3, 2), 16)}, ${parseInt(hitEffect.color.substr(5, 2), 16)}, ${hitEffect.opacity})`;
+        ctx.beginPath();
+        ctx.arc(hitEffect.x, hitEffect.y, hitEffect.size, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Update effect
+        hitEffect.size += 2;
+        hitEffect.opacity -= 0.05;
+        
+        // Continue animation if still visible
+        if (hitEffect.opacity > 0) {
+            requestAnimationFrame(animateHit);
+        }
+    };
+    
+    animateHit();
+}
+
+function createNoteExplosion(x, y, count) {
+    for (let i = 0; i < count; i++) {
+        // Create particle at boss position
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1 + Math.random() * 5;
+        const size = 10 + Math.random() * 20;
+        const lifetime = 1000 + Math.random() * 2000;
+        
+        const noteSymbols = ["♩", "♪", "♫", "♬", "♭", "♮", "♯"];
+        const symbol = noteSymbols[Math.floor(Math.random() * noteSymbols.length)];
+        
+        const noteParticle = {
+            x: x,
+            y: y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            size: size,
+            color: `hsl(${Math.random() * 360}, 100%, 70%)`,
+            rotation: Math.random() * Math.PI * 2,
+            rotationSpeed: (Math.random() - 0.5) * 0.2,
+            lifetime: lifetime,
+            timeLeft: lifetime,
+            symbol: symbol
+        };
+        
+        // Add to particles array
+        particles.push(noteParticle);
+    }
+}
+
+// Add a function to check if it's time to spawn a boss
+function checkBossSpawn() {
+    if (level >= nextBossLevel && !activeBoss && !bossFightActive) {
+        spawnBoss();
+    }
+}
+
+// Initialize particles array
+let particles = [];
+
+// =============================================
+// 2. AUDIO IMPLEMENTATION
+// =============================================
+
+// Audio context and sources
+let audioContext;
+let audioInitialized = false;
+let musicTrack;
+let currentMusicType = ""; // "menu", "gameplay", "boss"
+let musicVolume = 0.5;
+let sfxVolume = 0.7;
+let soundEnabled = true;
+let soundBuffers = {};
+let metronome;
+let bpm = 120; // Default tempo
+let beatInterval;
+let currentBeat = 0;
+let beatsPerMeasure = 4;
+let noteSubdivisions = 1; // 1 = quarter notes, 2 = eighth notes, etc.
+
+// Initialize audio system
+function initAudio() {
+    // Create audio context
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioInitialized = true;
+        console.log("Audio context initialized");
+        
+        // Set up metronome
+        setupMetronome();
+        
+        // Load sound effects
+        loadSounds();
+        
+        // Start with menu music
+        playMenuMusic();
+    } catch (e) {
+        console.error("Web Audio API not supported:", e);
+        audioInitialized = false;
+    }
+}
+
+// Load all game sounds
+function loadSounds() {
+    const soundFiles = {
+        // UI sounds
+        "menu_select": "sounds/menu_select.mp3",
+        "level_up": "sounds/level_up.mp3",
+        "upgrade_select": "sounds/upgrade_select.mp3",
+        
+        // Player sounds
+        "player_hit": "sounds/player_hit.mp3",
+        "player_death": "sounds/player_death.mp3",
+        "collect_note": "sounds/collect_note.mp3",
+        
+        // Weapon sounds - archer
+        "bow_fire": "sounds/bow_fire.mp3",
+        "bow_crit": "sounds/bow_crit.mp3",
+        "bow_evolve": "sounds/bow_evolve.mp3",
+        
+        // Weapon sounds - footman
+        "melee_swing": "sounds/melee_swing.mp3",
+        "melee_hit": "sounds/melee_hit.mp3",
+        "melee_crit": "sounds/melee_crit.mp3",
+        "melee_evolve": "sounds/melee_evolve.mp3",
+        
+        // Enemy sounds
+        "enemy_death": "sounds/enemy_death.mp3",
+        
+        // Boss sounds
+        "boss_warning": "sounds/boss_warning.mp3",
+        "boss_hit": "sounds/boss_hit.mp3",
+        "boss_hit_crit": "sounds/boss_hit_crit.mp3",
+        "boss_defeated": "sounds/boss_defeated.mp3",
+        "requiem_charge": "sounds/requiem_charge.mp3",
+        "requiem_activate": "sounds/requiem_activate.mp3",
+        "boss_shockwave": "sounds/boss_shockwave.mp3",
+        "boss_summon": "sounds/boss_summon.mp3",
+        "boss_field": "sounds/boss_field.mp3",
+        
+        // Chest and item sounds
+        "chest_appear": "sounds/chest_appear.mp3",
+        "chest_open": "sounds/chest_open.mp3",
+        
+        // Metronome sounds
+        "beat_strong": "sounds/beat_strong.mp3",
+        "beat_weak": "sounds/beat_weak.mp3",
+        "beat_subdivision": "sounds/beat_subdivision.mp3",
+        
+        // Music tracks
+        "music_menu": "music/menu_theme.mp3",
+        "music_gameplay_major": "music/gameplay_major.mp3",
+        "music_gameplay_minor": "music/gameplay_minor.mp3",
+        "music_boss": "music/boss_theme.mp3"
+    };
+    
+    // Placeholder function for loading sound
+    // In a real implementation, we would load actual audio files
+    // For this prototype, we'll simulate loading sounds
+    console.log("Loading sound effects (placeholder)");
+    
+    // Create mock buffer objects
+    for (const sound in soundFiles) {
+        soundBuffers[sound] = { 
+            url: soundFiles[sound], 
+            loaded: true 
+        };
+    }
+}
+
+// Set up music metronome for beat-synchronized gameplay
+function setupMetronome() {
+    if (!audioInitialized) return;
+    
+    // Create oscillator for click sounds
+    metronome = audioContext.createOscillator();
+    metronome.type = 'square';
+    
+    // Create gain node for volume control
+    const metronomeGain = audioContext.createGain();
+    metronomeGain.gain.value = 0; // Silent, we'll use this for timing only
+    
+    // Connect nodes
+    metronome.connect(metronomeGain);
+    metronomeGain.connect(audioContext.destination);
+    
+    // Start oscillator
+    metronome.start();
+    
+    // Set up beat interval based on BPM
+    setBPM(bpm);
+}
+
+function setBPM(newBPM) {
+    bpm = newBPM;
+    
+    // Clear existing interval
+    if (beatInterval) {
+        clearInterval(beatInterval);
+    }
+    
+    // Calculate milliseconds per beat
+    const msPerBeat = 60000 / bpm;
+    
+    // Set up new interval
+    beatInterval = setInterval(() => {
+        // Increment beat counter
+        currentBeat = (currentBeat + 1) % beatsPerMeasure;
+        
+        // Play beat sound
+        if (currentBeat === 0) {
+            // Downbeat (first beat of measure)
+            playSound("beat_strong");
+        } else {
+            // Weak beat
+            playSound("beat_weak");
+        }
+        
+        // Signal for attack synchronization
+        onBeat(currentBeat);
+    }, msPerBeat);
+    
+    // Calculate subdivision interval if needed
+    if (noteSubdivisions > 1) {
+        // Set up finer subdivision intervals
+        const msPerSubdivision = msPerBeat / noteSubdivisions;
+        
+        // Set up subdivision interval
+        subdivisionInterval = setInterval(() => {
+            // Skip if it's a main beat (already handled)
+            if (audioContext.currentTime % msPerBeat < 10) return;
+            
+            // Play subdivision sound
+            playSound("beat_subdivision");
+            
+            // Signal for attack synchronization on subdivisions
+            onSubdivision();
+        }, msPerSubdivision);
+    }
+}
+
+// Play background music by type
+function playMusic(type) {
+    if (!audioInitialized || !soundEnabled) return;
+    if (currentMusicType === type) return; // Already playing this music
+    
+    // Stop current music if playing
+    if (musicTrack) {
+        fadeOutMusic().then(() => {
+            // Start new music after fade out
+            startMusicByType(type);
+        });
+    } else {
+        // Start music immediately if none playing
+        startMusicByType(type);
+    }
+    
+    currentMusicType = type;
+}
+
+function startMusicByType(type) {
+    let musicSource;
+    
+    switch(type) {
+        case "menu":
+            musicSource = "music_menu";
+            break;
+        case "gameplay":
+            // Choose based on player's scale upgrades
+            const hasMinorUpgrades = currentUpgrades.some(
+                upgrade => upgrade.name.includes("Minor") || 
+                           upgrade.name.includes("Dorian")
+            );
+            
+            musicSource = hasMinorUpgrades ? "music_gameplay_minor" : "music_gameplay_major";
+            break;
+    }
+    
+    if (musicSource) {
+        // In a real implementation, we would load and play the actual audio
+        console.log(`Playing ${musicSource} music`);
+    }
+}
+
+function fadeOutMusic() {
+    // Return a promise that resolves when fade is complete
+    return new Promise(resolve => {
+        // In a real implementation, we would fade out the actual audio
+        console.log("Fading out music");
+        setTimeout(resolve, 1000); // Simulate 1 second fade out
+    });
+}
+
+// Shorthand functions for different music types
+function playMenuMusic() {
+    playMusic("menu");
+}
+
+function playGameplayMusic() {
+    playMusic("gameplay");
+    // Reset to normal tempo
+    setBPM(120);
+}
+
+function playBossMusic() {
+    playMusic("boss");
+}
+
+// Play a sound effect
+function playSound(soundId) {
+    if (!audioInitialized || !soundEnabled) return;
+    if (!soundBuffers[soundId]) {
+        console.warn(`Sound not found: ${soundId}`);
+        return;
+    }
+    
+    // In a real implementation, we would play the actual audio
+    // For this prototype, just log the sound being played
+    //console.log(`Playing sound: ${soundId}`);
+}
+
+// Toggle sound on/off
+function toggleSound() {
+    soundEnabled = !soundEnabled;
+    
+    if (!soundEnabled) {
+        // Stop all sounds
+        fadeOutMusic();
+    } else {
+        // Resume appropriate music
+        if (activeBoss) {
+            playBossMusic();
+        } else if (gameActive) {
+            playGameplayMusic();
+        } else {
+            playMenuMusic();
+        }
+    }
+    
+    return soundEnabled;
+}
+
+// Set volume levels
+function setMusicVolume(level) {
+    musicVolume = Math.max(0, Math.min(1, level));
+    // Apply to music tracks
+}
+
+function setSFXVolume(level) {
+    sfxVolume = Math.max(0, Math.min(1, level));
+    // Apply to sound effects
+}
+
+// Create sound settings UI
+function createSoundSettingsUI() {
+    const settingsPanel = document.createElement('div');
+    settingsPanel.id = 'sound-settings';
+    settingsPanel.style.position = 'absolute';
+    settingsPanel.style.top = '10px';
+    settingsPanel.style.right = '10px';
+    settingsPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    settingsPanel.style.padding = '10px';
+    settingsPanel.style.borderRadius = '5px';
+    settingsPanel.style.color = '#ffffff';
+    settingsPanel.style.fontSize = '14px';
+    settingsPanel.style.display = 'none';
+    settingsPanel.style.zIndex = '100';
+    
+    settingsPanel.innerHTML = `
+        <div style="text-align: center; margin-bottom: 10px; font-weight: bold;">Sound Settings</div>
+        <div style="margin-bottom: 5px;">
+            <label for="music-volume">Music: </label>
+            <input type="range" id="music-volume" min="0" max="100" value="${musicVolume * 100}" />
+        </div>
+        <div style="margin-bottom: 5px;">
+            <label for="sfx-volume">SFX: </label>
+            <input type="range" id="sfx-volume" min="0" max="100" value="${sfxVolume * 100}" />
+        </div>
+        <div style="text-align: center;">
+            <button id="toggle-sound">${soundEnabled ? 'Mute' : 'Unmute'}</button>
+            <button id="close-settings">Close</button>
+        </div>
+    `;
+    
+    document.body.appendChild(settingsPanel);
+    
+    // Add event listeners
+    document.getElementById('music-volume').addEventListener('input', (e) => {
+        setMusicVolume(e.target.value / 100);
+    });
+    
+    document.getElementById('sfx-volume').addEventListener('input', (e) => {
+        setSFXVolume(e.target.value / 100);
+    });
+    
+    document.getElementById('toggle-sound').addEventListener('click', () => {
+        const enabled = toggleSound();
+        document.getElementById('toggle-sound').textContent = enabled ? 'Mute' : 'Unmute';
+    });
+    
+    document.getElementById('close-settings').addEventListener('click', () => {
+        toggleSoundSettings();
+    });
+    
+    // Add sound settings button to game UI
+    const soundButton = document.createElement('div');
+    soundButton.id = 'sound-button';
+    soundButton.style.position = 'absolute';
+    soundButton.style.top = '10px';
+    soundButton.style.right = '10px';
+    soundButton.style.width = '30px';
+    soundButton.style.height = '30px';
+    soundButton.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    soundButton.style.borderRadius = '50%';
+    soundButton.style.display = 'flex';
+    soundButton.style.alignItems = 'center';
+    soundButton.style.justifyContent = 'center';
+    soundButton.style.cursor = 'pointer';
+    soundButton.innerHTML = '🔊';
+    soundButton.style.fontSize = '18px';
+    soundButton.style.color = '#ffffff';
+    
+    soundButton.addEventListener('click', toggleSoundSettings);
+    document.body.appendChild(soundButton);
+}
+
+function toggleSoundSettings() {
+    const settingsPanel = document.getElementById('sound-settings');
+    if (settingsPanel.style.display === 'none') {
+        settingsPanel.style.display = 'block';
+    } else {
+        settingsPanel.style.display = 'none';
+    }
+}
+
+// =============================================
+// 3. UPDATED ATTACK SYSTEM
+// =============================================
+
+// Attack types corresponding to music theory
+const ATTACK_TYPES = {
+    QUARTER_NOTE: {
+        name: "Quarter Note",
+        subdivision: 1,
+        icon: "♩",
+        color: "#ffffff",
+        timing: [0]
+    },
+    EIGHTH_NOTE: {
+        name: "Eighth Note",
+        subdivision: 2,
+        icon: "♪",
+        color: "#44ff44",
+        timing: [0, 0.5]
+    },
+    TRIPLET: {
+        name: "Triplet",
+        subdivision: 3,
+        icon: "♫",
+        color: "#44aaff",
+        timing: [0, 1/3, 2/3]
+    },
+    SIXTEENTH_NOTE: {
+        name: "Sixteenth Note",
+        subdivision: 4,
+        icon: "♬",
+        color: "#ff44ff",
+        timing: [0, 0.25, 0.5, 0.75]
+    },
+    SYNCOPATED: {
+        name: "Syncopated",
+        subdivision: 2,
+        icon: "♪♩",
+        color: "#ffaa44",
+        timing: [0.25, 0.75] // Off-beats
+    },
+    DOTTED_EIGHTH: {
+        name: "Dotted Eighth",
+        subdivision: 3,
+        icon: "♪.",
+        color: "#ffff44",
+        timing: [0, 0.75]
+    }
+};
+
+// Player attack pattern
+let currentAttackPattern = "QUARTER_NOTE";
+let subBeatCounter = 0;
+let lastAttackTime = 0;
+
+// Attack timing functions
+function onBeat(beatNumber) {
+    // This is called on each main beat
+    subBeatCounter = 0;
+    
+    const pattern = ATTACK_TYPES[currentAttackPattern];
+    if (pattern.timing.includes(0)) {
+        // Attack on the main beat if the pattern includes it
+        performAttackByCharacterType();
+    }
+    
+    // Visual feedback
+    showBeatIndicator(beatNumber === 0); // true for downbeat
+    
+    // Update attack visuals
+    updateAttackPatternDisplay();
+}
+
+function onSubdivision() {
+    // This is called on subdivisions between beats
+    subBeatCounter++;
+    
+    const pattern = ATTACK_TYPES[currentAttackPattern];
+    const subBeatPosition = subBeatCounter / pattern.subdivision;
+    
+    // Check if we should attack at this subdivision
+    if (pattern.timing.includes(subBeatPosition)) {
+        performAttackByCharacterType();
+    }
+    
+    // Visual feedback for subdivisions
+    showSubbeatIndicator();
+}
+
+function performAttackByCharacterType() {
+    if (!gameActive) return;
+
+    // Calculate attack power based on beat position
+    const isOnBeat = subBeatCounter === 0;
+    const beatBonus = isOnBeat ? 1.2 : 1.0; // 20% damage bonus on main beats
+    
+    if (player.characterType === "ARCHER") {
+        // Archer fires projectiles
+        fireProjectileWithRhythm(beatBonus);
+        playSound(isOnBeat ? "bow_fire" : "bow_fire");
+    } else if (player.characterType === "FOOTMAN") {
+        // Footman does melee attack
+        meleeAttackWithRhythm(beatBonus);
+        playSound(isOnBeat ? "melee_swing" : "melee_swing");
+    }
+    
+    lastAttackTime = Date.now();
+}
+
+function fireProjectileWithRhythm(beatBonus) {
+    // Find the closest enemy to aim at
+    let closestEnemy = null;
+    let closestDist = Infinity;
+    
+    for (let enemy of enemies) {
+        const dist = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+        if (dist < closestDist) {
+            closestDist = dist;
+            closestEnemy = enemy;
+        }
+    }
+    
+    // Direction to fire
+    let dirX = 0;
+    let dirY = -1; // Default direction up if no enemies
+    
+    if (closestEnemy) {
+        const dx = closestEnemy.x - player.x;
+        const dy = closestEnemy.y - player.y;
+        const dist = Math.hypot(dx, dy);
+        dirX = dx / dist;
+        dirY = dy / dist;
+    }
+    
+    // Get attack pattern color
+    const patternColor = ATTACK_TYPES[currentAttackPattern].color;
+    
+    // Create projectile
+    const newProjectile = {
+        x: player.x,
+        y: player.y,
+        size: PROJECTILE_SIZE,
+        speed: player.projectileSpeed || PROJECTILE_SPEED,
+        dirX: dirX,
+        dirY: dirY,
+        color: patternColor,
+        power: player.attackPower * beatBonus,
+        isCritical: Math.random() < player.critChance,
+        piercing: player.piercing,
+        distance: 0,
+        maxDistance: player.range || 500,
+        hitEnemies: [],
+        rhythmTime: lastAttackTime // Store when projectile was fired
+    };
+    
+    // Critical hits are larger and more powerful
+    if (newProjectile.isCritical) {
+        newProjectile.size *= 1.5;
+        newProjectile.power *= 2;
+        newProjectile.color = "#ff4400";
+        playSound("bow_crit");
+    }
+    
+    projectiles.push(newProjectile);
+    
+    // Check for multi-shot based on attack pattern
+    const pattern = ATTACK_TYPES[currentAttackPattern];
+    if (pattern.subdivision >= 3 && player.doubleAttackChance > 0) {
+        // Higher chance of double attacks with faster patterns
+        const extraShotChance = player.doubleAttackChance * (pattern.subdivision / 2);
+        if (Math.random() < extraShotChance) {
+            // Add slight spread for multi-shots
+            const spreadAngle = (Math.random() - 0.5) * 0.5;
+            const cos = Math.cos(spreadAngle);
+            const sin = Math.sin(spreadAngle);
+            const newDirX = dirX * cos - dirY * sin;
+            const newDirY = dirX * sin + dirY * cos;
+            
+            // Create second projectile
+            const extraProjectile = {
+                ...newProjectile,
+                dirX: newDirX,
+                dirY: newDirY,
+                x: player.x + 10 * Math.cos(spreadAngle),
+                y: player.y + 10 * Math.sin(spreadAngle),
+                rhythmTime: lastAttackTime + 50 // Slight delay
+            };
+            
+            projectiles.push(extraProjectile);
+        }
+    }
+}
+
+function meleeAttackWithRhythm(beatBonus) {
+    const range = player.attackRange || MELEE_RANGE;
+    
+    // Get attack pattern color
+    const patternColor = ATTACK_TYPES[currentAttackPattern].color;
+    
+    // Create melee attack area
+    const attack = {
+        x: player.x,
+        y: player.y,
+        range: range,
+        duration: 200, // ms
+        timeLeft: 200,
+        power: player.attackPower * beatBonus,
+        hitEnemies: [], // Track enemies hit
+        multiTarget: player.multiTarget,
+        color: patternColor,
+        isCritical: Math.random() < player.critChance,
+        rhythmTime: lastAttackTime
+    };
+    
+    // Critical hits have larger range and more power
+    if (attack.isCritical) {
+        attack.range *= 1.3;
+        attack.power *= 2;
+        attack.color = "#ff4400";
+        attack.duration *= 1.2;
+        attack.timeLeft = attack.duration;
+        playSound("melee_crit");
+    }
+    
+    meleeAttacks.push(attack);
+    meleeAttackActive = true;
+}
+
+// Update the attack pattern based on player's rhythm upgrades
+function updateAttackPattern() {
+    // Default pattern
+    let newPattern = "QUARTER_NOTE";
+    
+    // Count rhythm upgrades
+    const rhythmUpgrades = currentUpgrades.filter(
+        upgrade => upgrade.category === "RHYTHM"
+    ).length;
+    
+    // Check for specific upgrades
+    const hasSyncopation = currentUpgrades.some(
+        upgrade => upgrade.name.includes("Syncopation")
+    );
+    
+    const hasPolyrhythm = currentUpgrades.some(
+        upgrade => upgrade.name.includes("Polyrhythm")
+    );
+    
+    const hasTriplet = currentUpgrades.some(
+        upgrade => upgrade.name.includes("Triplet")
+    );
+    
+    // Determine pattern based on upgrades
+    if (rhythmUpgrades >= 3) {
+        // Advanced patterns with 3 rhythm upgrades
+        if (hasSyncopation && hasTriplet) {
+            newPattern = "DOTTED_EIGHTH";
+        } else if (hasSyncopation) {
+            newPattern = "SYNCOPATED";
+        } else if (hasTriplet) {
+            newPattern = "TRIPLET";
+        } else if (hasPolyrhythm) {
+            newPattern = "SIXTEENTH_NOTE";
+        }
+    } else if (rhythmUpgrades >= 2) {
+        // Intermediate patterns with 2 rhythm upgrades
+        if (hasTriplet) {
+            newPattern = "TRIPLET";
+        } else if (hasSyncopation) {
+            newPattern = "SYNCOPATED";
+        } else {
+            newPattern = "EIGHTH_NOTE";
+        }
+    } else if (rhythmUpgrades >= 1) {
+        // Basic improved pattern with 1 rhythm upgrade
+        newPattern = "EIGHTH_NOTE";
+    }
+    
+    // Update pattern if changed
+    if (newPattern !== currentAttackPattern) {
+        currentAttackPattern = newPattern;
+        noteSubdivisions = ATTACK_TYPES[newPattern].subdivision;
+        
+        // Update metronome to match new subdivision
+        if (audioInitialized) {
+            setBPM(bpm);
+        }
+        
+        // Create visual notification
+        showAttackPatternChange(newPattern);
+    }
+}
+
+// Visual feedback functions
+function showBeatIndicator(isDownbeat) {
+    // Visual pulse to indicate the beat
+    const indicator = document.createElement('div');
+    indicator.style.position = 'absolute';
+    indicator.style.bottom = '80px';
+    indicator.style.left = '50%';
+    indicator.style.transform = 'translateX(-50%)';
+    indicator.style.width = isDownbeat ? '30px' : '20px';
+    indicator.style.height = isDownbeat ? '30px' : '20px';
+    indicator.style.borderRadius = '50%';
+    indicator.style.backgroundColor = isDownbeat ? '#ffcc00' : '#ffffff';
+    indicator.style.opacity = '0.8';
+    indicator.style.zIndex = '5';
+    document.body.appendChild(indicator);
+    
+    // Animate and remove
+    let opacity = 0.8;
+    let size = isDownbeat ? 30 : 20;
+    
+    const animateIndicator = () => {
+        opacity -= 0.05;
+        size += 1;
+        
+        indicator.style.opacity = opacity;
+        indicator.style.width = `${size}px`;
+        indicator.style.height = `${size}px`;
+        indicator.style.marginLeft = `-${size/2}px`;
+        indicator.style.marginTop = `-${size/2}px`;
+        
+        if (opacity > 0) {
+            requestAnimationFrame(animateIndicator);
+        } else {
+            document.body.removeChild(indicator);
+        }
+    };
+    
+    requestAnimationFrame(animateIndicator);
+}
+
+function showSubbeatIndicator() {
+    // Smaller pulse for subdivisions
+    const indicator = document.createElement('div');
+    indicator.style.position = 'absolute';
+    indicator.style.bottom = '80px';
+    indicator.style.left = '50%';
+    indicator.style.transform = 'translateX(-50%)';
+    indicator.style.width = '10px';
+    indicator.style.height = '10px';
+    indicator.style.borderRadius = '50%';
+    indicator.style.backgroundColor = '#aaaaaa';
+    indicator.style.opacity = '0.6';
+    indicator.style.zIndex = '5';
+    document.body.appendChild(indicator);
+    
+    // Animate and remove
+    setTimeout(() => {
+        document.body.removeChild(indicator);
+    }, 100);
+}
+
+function showAttackPatternChange(pattern) {
+    const patternData = ATTACK_TYPES[pattern];
+    
+    const notification = document.createElement('div');
+    notification.style.position = 'absolute';
+    notification.style.bottom = '120px';
+    notification.style.left = '50%';
+    notification.style.transform = 'translateX(-50%)';
+    notification.style.color = patternData.color;
+    notification.style.fontSize = '24px';
+    notification.style.fontWeight = 'bold';
+    notification.style.textAlign = 'center';
+    notification.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    notification.style.padding = '10px 20px';
+    notification.style.borderRadius = '10px';
+    notification.style.zIndex = '10';
+    notification.innerHTML = `Rhythm Pattern: ${patternData.name} ${patternData.icon}`;
+    document.body.appendChild(notification);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+        document.body.removeChild(notification);
+    }, 3000);
+}
+
+// Create a persistent rhythm display
+function createRhythmDisplay() {
+    const rhythmDisplay = document.createElement('div');
+    rhythmDisplay.id = 'rhythm-display';
+    rhythmDisplay.style.position = 'absolute';
+    rhythmDisplay.style.bottom = '20px';
+    rhythmDisplay.style.left = '50%';
+    rhythmDisplay.style.transform = 'translateX(-50%)';
+    rhythmDisplay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    rhythmDisplay.style.padding = '5px 15px';
+    rhythmDisplay.style.borderRadius = '20px';
+    rhythmDisplay.style.color = '#ffffff';
+    rhythmDisplay.style.fontSize = '18px';
+    rhythmDisplay.style.zIndex = '50';
+    document.body.appendChild(rhythmDisplay);
+    
+    updateAttackPatternDisplay();
+}
+
+function updateAttackPatternDisplay() {
+    const rhythmDisplay = document.getElementById('rhythm-display');
+    if (!rhythmDisplay) return;
+    
+    const pattern = ATTACK_TYPES[currentAttackPattern];
+    
+    // Create a visual representation of the pattern
+    let patternHTML = `<span style="color:${pattern.color}">${pattern.name} ${pattern.icon}</span> `;
+    
+    // Add beat markers
+    for (let i = 0; i < beatsPerMeasure; i++) {
+        if (i === currentBeat) {
+            patternHTML += `<span style="color:#ffcc00; font-weight:bold; font-size:24px;">●</span> `;
+        } else {
+            patternHTML += `<span style="color:#888888">●</span> `;
+        }
+    }
+    
+    rhythmDisplay.innerHTML = patternHTML;
+}
+
+// Draw enhanced projectiles with rhythm patterns
+function drawEnhancedProjectiles() {
+    for (let projectile of projectiles) {
+        // Base color from rhythm pattern or critical hit
+        ctx.fillStyle = projectile.color;
+        
+        // Draw main projectile
+        ctx.beginPath();
+        ctx.arc(projectile.x, projectile.y, projectile.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Add note/rhythm symbols to certain projectiles
+        const timeSinceFired = Date.now() - projectile.rhythmTime;
+        if (timeSinceFired < 500) { // Only show symbols briefly after firing
+            const patternData = ATTACK_TYPES[currentAttackPattern];
+            ctx.fillStyle = "#ffffff";
+            ctx.font = `${projectile.size}px Consolas`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(patternData.icon, 
+                projectile.x + projectile.dirX * projectile.size, 
+                projectile.y + projectile.dirY * projectile.size);
+        }
+        
+        // Draw trail
+        ctx.strokeStyle = `rgba(${parseInt(projectile.color.substr(1, 2), 16)}, ${parseInt(projectile.color.substr(3, 2), 16)}, ${parseInt(projectile.color.substr(5, 2), 16)}, 0.4)`;
+        ctx.lineWidth = projectile.size / 3;
+        ctx.beginPath();
+        ctx.moveTo(
+            projectile.x - projectile.dirX * projectile.size * 2,
+            projectile.y - projectile.dirY * projectile.size * 2
+        );
+        ctx.lineTo(projectile.x, projectile.y);
+        ctx.stroke();
+    }
+}
+
+// Draw enhanced melee attacks with rhythm patterns
+function drawEnhancedMeleeAttacks() {
+    for (let attack of meleeAttacks) {
+        // Calculate opacity based on time left
+        const opacity = attack.timeLeft / attack.duration;
+        
+        // Draw circle for attack area
+        ctx.fillStyle = `rgba(${parseInt(attack.color.substr(1, 2), 16)}, ${parseInt(attack.color.substr(3, 2), 16)}, ${parseInt(attack.color.substr(5, 2), 16)}, ${opacity * 0.3})`;
+        ctx.beginPath();
+        ctx.arc(attack.x, attack.y, attack.range, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw ring
+        ctx.strokeStyle = `rgba(${parseInt(attack.color.substr(1, 2), 16)}, ${parseInt(attack.color.substr(3, 2), 16)}, ${parseInt(attack.color.substr(5, 2), 16)}, ${opacity})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(attack.x, attack.y, attack.range, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Add note/rhythm symbols to the attack
+        const timeSinceFired = Date.now() - attack.rhythmTime;
+        if (timeSinceFired < 300) { // Only show symbols briefly after attacking
+            const patternData = ATTACK_TYPES[currentAttackPattern];
+            
+            // Draw multiple symbols in a circle
+            const symbolCount = patternData.subdivision;
+            for (let i = 0; i < symbolCount; i++) {
+                const angle = (Math.PI * 2 * i) / symbolCount;
+                const x = attack.x + Math.cos(angle) * attack.range * 0.7;
+                const y = attack.y + Math.sin(angle) * attack.range * 0.7;
+                
+                ctx.fillStyle = "#ffffff";
+                ctx.font = `${attack.range / 3}px Consolas`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(patternData.icon, x, y);
+            }
+        }
+    }
+}
+
+// =============================================
+// INTEGRATION FUNCTIONS
+// =============================================
+
+// Add initialization to window load
+window.addEventListener('load', () => {
+    // Initialize original game
+    init();
+    
+    // Add new features
+    initAudio();
+    createSoundSettingsUI();
+    createRhythmDisplay();
+    
+    // Set initial attack pattern
+    currentAttackPattern = "QUARTER_NOTE";
+    
+    console.log("Enhanced game features loaded");
+});
+
+// Override the update function to include new features
+const originalUpdate = update;
+function enhancedUpdate(deltaTime) {
+    // Check if boss should spawn
+    checkBossSpawn();
+    
+    // Update boss if active
+    if (activeBoss) {
+        updateBoss(deltaTime);
+    }
+    
+    // Update attack pattern based on upgrades
+    updateAttackPattern();
+    
+    // Continue with original update
+    if (typeof originalUpdate === 'function') {
+        originalUpdate(deltaTime);
+    }
+    
+    // Update particles
+    updateParticles(deltaTime);
+}
+
+// Override the render function to include new features
+const originalRender = render;
+function enhancedRender() {
+    // Start with original render
+    if (typeof originalRender === 'function') {
+        originalRender();
+    }
+    
+    // Draw boss if active
+    if (activeBoss) {
+        drawBoss();
+    }
+    
+    // Draw enhanced projectiles
+    drawEnhancedProjectiles();
+    
+    // Draw enhanced melee attacks
+    drawEnhancedMeleeAttacks();
+    
+    // Draw particles
+    drawParticles();
+}
+
+// Update particle effects
+function updateParticles(deltaTime) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const particle = particles[i];
+        
+        // Update position
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        
+        // Update rotation
+        particle.rotation += particle.rotationSpeed;
+        
+        // Update lifetime
+        particle.timeLeft -= deltaTime;
+        
+        // Remove if expired
+        if (particle.timeLeft <= 0) {
+            particles.splice(i, 1);
+        }
+    }
+}
+
+// Draw particle effects
+function drawParticles() {
+    for (let particle of particles) {
+        // Calculate opacity based on remaining lifetime
+        const opacity = particle.timeLeft / particle.lifetime;
+        
+        ctx.save();
+        
+        // Move to particle position and apply rotation
+        ctx.translate(particle.x, particle.y);
+        ctx.rotate(particle.rotation);
+        
+        // Draw note symbol
+        ctx.fillStyle = `rgba(${parseInt(particle.color.substr(1, 2), 16)}, ${parseInt(particle.color.substr(3, 2), 16)}, ${parseInt(particle.color.substr(5, 2), 16)}, ${opacity})`;
+        ctx.font = `${particle.size}px Consolas`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(particle.symbol, 0, 0);
+        
+        ctx.restore();
+    }
+}
+
+// Add these variables to the game
+let bossFightActive = false;
+window.enhancedUpdate = enhancedUpdate;
+window.enhancedRender = enhancedRender;
+// INTEGRATION INTO MAIN GAME LOOP
+// This section would need to be integrated into the main game code with the original functions
+
+window.addEventListener('load', enhancedInit);
+
+// These functions would need to be called from the main game loop:
+// - enhancedUpdate(deltaTime) from update()
+// - enhancedRender() from render() after drawing enemies
+// - enhancedEnemyDefeated(enemy) whenever an enemy is defeated
+
+// For collision detection with enemies, modify the existing code to call enhancedEnemyDefeated
+// after an enemy is defeated in both projectile-enemy and melee-enemy collision sections
+        // Start the game when window loads
+
+
+    </script>
+</body>
+</html>
