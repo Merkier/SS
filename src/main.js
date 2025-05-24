@@ -714,26 +714,18 @@ renderGame() {
   // Restore context
   this.ctx.restore();
   
-  // Draw conductor system HUD (after camera transform is reset)
-  if (this.conductorSystem && this.conductorSystem.currentEvent) {
-    this.conductorSystem.drawEventHUD(this.ctx);
-    
-    // Draw event-specific visuals
-    switch(this.conductorSystem.currentEvent) {
-      case "FALLING_NOTES":
-        this.drawFallingNotes();
-        break;
-      case "RHYTHM_ZONES":
-        this.conductorSystem.drawRhythmZones(this.ctx);
-        break;
-      case "TEMPO_CHANGE":
-        this.conductorSystem.drawTempoChange(this.ctx);
-        break;
-        case "HAZARD_LINES":
-        this.conductorSystem.drawHazardLines(this.ctx);
-        break;
+  this.ctx.restore();
+  
+
+    // Draw conductor system HUD (after camera transform is reset)
+    if (this.conductorSystem && this.conductorSystem.currentEvent) {
+      this.conductorSystem.drawEventHUD(this.ctx);
+      
+      // Draw event-specific visuals using the method from ConductorSystem
+      if (typeof this.conductorSystem.drawCurrentEventVisuals === 'function') {
+        this.conductorSystem.drawCurrentEventVisuals(this.ctx);
+      }
     }
-  }
 }
 
 // Add the missing drawFallingNotes method
