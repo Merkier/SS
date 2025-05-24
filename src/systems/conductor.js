@@ -520,9 +520,113 @@ class ConductorSystem {
           ctx.restore();
       }
   }
-  drawRhythmZones(ctx) { /* ... as before */ }
-  drawTempoChange(ctx) { /* ... as before */ }
-  drawHazardLines(ctx) { /* ... as before */ }
+  // Draw methods for events
+  drawRhythmZones(ctx) {
+    const camera = window.game?.camera || { x: 0, y: 0 };
+    
+    ctx.fillStyle = 'rgba(255, 50, 50, 0.8)';
+    ctx.font = '18px Consolas';
+    ctx.textAlign = 'center';
+    ctx.fillText('WARNING: Unsafe Areas! Stay In Safe Zones!', ctx.canvas.width / 2, 30);
+    
+    ctx.fillStyle = "rgba(255, 100, 100, 0.15)";
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    
+    // Draw safe zones with fading support
+    for (const zone of this.safeZones) {
+      // Calculate opacity based on fade state
+      let opacity = 1.0;
+      if (zone.fadeTimer !== undefined) {
+        opacity = zone.fadeTimer / zone.maxFadeTime;
+      }
+      
+      const pulse = 0.8 + 0.2 * Math.sin(Date.now() / zone.pulseRate);
+      
+      // Draw zone with opacity
+      ctx.fillStyle = `rgba(100, 255, 100, ${0.4 * opacity})`;
+      ctx.beginPath();
+      ctx.arc(zone.x + camera.x, zone.y + camera.y, 
+              zone.radius * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.strokeStyle = `rgba(50, 200, 50, ${0.8 * opacity})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(zone.x + camera.x, zone.y + camera.y, 
+              zone.radius * pulse, 0, Math.PI * 2);
+      ctx.stroke();
+      
+      // Only draw symbol for non-fading zones
+      if (zone.fadeTimer === undefined) {
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "20px Consolas";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("♪", zone.x + camera.x, zone.y + camera.y);
+      }
+    }
+  }
+
+  drawTempoChange(ctx) {
+    // Get screen dimensions
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+    
+    // Show tempo change notification
+    ctx.fillStyle = this.isSpeedUp ? "#ff8844" : "#44aaff";
+    ctx.font = "24px Consolas";
+    ctx.textAlign = "center";
+    ctx.fillText(
+      this.isSpeedUp ? "TEMPO UP!" : "TEMPO DOWN!", 
+      width / 2, 
+      height / 2 - 100
+    );
+    
+    // Flash effect for first second
+    if (this.eventTimer < this.tempoFlashTime) {
+      // Draw full screen overlay
+      const opacity = (this.tempoFlashTime - this.eventTimer) / this.tempoFlashTime * 0.2;
+      ctx.fillStyle = this.isSpeedUp ? `rgba(255, 100, 0, ${opacity})` : `rgba(0, 100, 255, ${opacity})`;
+      ctx.fillRect(0, 0, width, height);
+    }
+    
+    // Draw tempo indicator
+    const indicators = 8;
+    const spacing = 30;
+    const startX = width / 2 - (indicators * spacing) / 2;
+    
+    for (let i = 0; i < indicators; i++) {
+      const x = startX + i * spacing;
+      const y = height / 2 - 50;
+      
+      // Highlight current beat
+      const beatDuration = this.isSpeedUp ? 400 : 800; // ms per beat
+      const beat = Math.floor((this.eventTimer % (beatDuration * indicators)) / beatDuration);
+      
+      if (i === beat) {
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(x, y, 8, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+drawHazardLines(ctx) {
+  // Just draw the warning text - the actual hazard lines are handled in main.js drawMusicGrid
+  ctx.fillStyle = 'rgba(255, 50, 50, 0.8)';
+  ctx.font = '18px Consolas';
+  ctx.textAlign = 'center';
+  ctx.fillText('WARNING: Hazardous Staff Lines! Avoid the red lines!', ctx.canvas.width / 2, 30);
+  
+  // No need to duplicate the line drawing logic - main.js already checks
+  // for this.conductorSystem.currentEvent === "HAZARD_LINES"
+}
 
   drawCurrentEventVisuals(ctx) {
     if (!this.currentEvent) return;
@@ -537,11 +641,70 @@ class ConductorSystem {
     }
   }
 
-  drawEventHUD(ctx) { /* ... as before ... */ }
-  formatEventName(eventType) { /* ... as before ... */ }
-  showEventScore() { /* ... as before ... */ }
-  toggleEvent(eventType, enabled) { /* ... as before ... */ }
-  setEnabled(enabled) { /* ... as before ... */ }
+   // Event HUD drawing
+  drawEventHUD(ctx) {
+    // Event name
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px Consolas';
+    ctx.textAlign = 'center';
+    ctx.fillText(`Conductor Event: ${this.formatEventName(this.currentEvent)}`, ctx.canvas.width / 2, 80);
+    
+    // Timer bar
+    const timerWidth = 200;
+    const timerHeight = 5;
+    const timerX = ctx.canvas.width / 2 - timerWidth / 2;
+    const timerY = 90;
+    
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(timerX, timerY, timerWidth, timerHeight);
+    
+    const progress = Math.min(this.eventTimer / this.eventDuration, 1);
+    ctx.fillStyle = progress < 0.5 ? '#44ff44' : (progress < 0.8 ? '#ffff44' : '#ff4444');
+    ctx.fillRect(timerX, timerY, timerWidth * progress, timerHeight);
+    
+    // Current score
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = '14px Consolas';
+    ctx.fillText(`Score: ${this.eventScore}`, ctx.canvas.width / 2, 110);
+  }
+
+  // Format event name for UI display
+  formatEventName(eventType) {
+    if (!eventType) return "";
+    return eventType.replace(/_/g, ' ').toLowerCase()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
+  // Event score notification
+  showEventScore() {
+    // Only create notification if we have a message system
+    const messageSystem = window.messageSystem || null;
+    if (!messageSystem) return;
+    
+    const color = this.eventScore > 50 ? "#44ff44" : 
+                this.eventScore > 20 ? "#ffff44" : "#ff8844";
+    
+    messageSystem.showRewardText(`Event Score: ${this.eventScore}`, color);
+  }
+    
+  // Control methods
+  toggleEvent(eventType, enabled) {
+    if (this.enabledEvents.hasOwnProperty(eventType)) {
+      this.enabledEvents[eventType] = enabled;
+      return true;
+    }
+    return false;
+  }
+
+  setEnabled(enabled) {
+    this.enabled = enabled;
+    if (!enabled && this.currentEvent) {
+      this.endEvent();
+    }
+    return this.enabled;
+  }
   reset() { 
     this.enabled = false; this.currentEvent = null; this.eventTimer = 0;
     this.fallingNotes = []; this.safeZones = [];
